@@ -31,15 +31,79 @@ export default function SchedulesPage() {
   const [editingSchedule, setEditingSchedule] = useState<Schedule | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [profile, setProfile] = useState<any>(null)
   
-  const { user, profile } = useAuth()
+  const { user, profile: authProfile } = useAuth()
 
+  // Load cached profile from localStorage first
   useEffect(() => {
-    if (profile?.organization_id) {
-      fetchSchedules()
-      fetchDepartments()
+    const cachedProfile = localStorage.getItem('profile')
+    if (cachedProfile) {
+      try {
+        const parsed = JSON.parse(cachedProfile)
+        let orgCandidate = parsed.organization
+        let org: { id: string; name: string; subscription_plan: string } = { id: '', name: '', subscription_plan: '' }
+        if (Array.isArray(orgCandidate) && orgCandidate.length > 0 && typeof orgCandidate[0] === 'object') {
+          org = orgCandidate[0] as { id: string; name: string; subscription_plan: string }
+        } else if (orgCandidate && typeof orgCandidate === 'object' && !Array.isArray(orgCandidate)) {
+          org = orgCandidate as { id: string; name: string; subscription_plan: string }
+        }
+        setProfile({
+          id: parsed.id || '',
+          first_name: parsed.first_name || '',
+          last_name: parsed.last_name || '',
+          email: parsed.email || '',
+          role: parsed.role || '',
+          organization: org,
+          organization_id: org.id || ''
+        })
+      } catch (e) {
+        // Ignore invalid cache
+      }
     }
-  }, [profile?.organization_id])
+  }, [])
+
+  // MOCK DATA for schedules and departments
+  useEffect(() => {
+    setLoading(true)
+    setTimeout(() => {
+      setSchedules([
+        {
+          id: '1',
+          name: 'Weekly Check-in',
+          frequency: 'weekly',
+          day_of_week: 1,
+          time_of_day: '09:00',
+          timezone: 'Africa/Nairobi',
+          is_active: true,
+          message_template: 'How are you feeling this week?',
+          target_departments: ['Engineering'],
+          target_employees: [],
+          created_at: '2024-01-01',
+          updated_at: '2024-07-01'
+        },
+        {
+          id: '2',
+          name: 'Monthly All-Hands',
+          frequency: 'monthly',
+          day_of_week: undefined,
+          time_of_day: '10:00',
+          timezone: 'Africa/Nairobi',
+          is_active: false,
+          message_template: 'Share your thoughts for the month!',
+          target_departments: ['All'],
+          target_employees: [],
+          created_at: '2024-01-05',
+          updated_at: '2024-07-01'
+        }
+      ])
+      setDepartments([
+        { name: 'Engineering', count: 5 },
+        { name: 'Design', count: 3 }
+      ])
+      setLoading(false)
+    }, 500)
+  }, [])
 
   const fetchSchedules = async () => {
     try {

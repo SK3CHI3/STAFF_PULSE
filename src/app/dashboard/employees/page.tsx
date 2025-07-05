@@ -34,87 +34,79 @@ export default function Employees() {
   const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [profile, setProfile] = useState<any>(null)
 
-  const { user, profile } = useAuth()
+  const { user, profile: authProfile } = useAuth()
 
-  // Fetch employees and departments
+  // Load cached profile from localStorage first
   useEffect(() => {
-    if (profile?.organization_id) {
-      fetchEmployees()
-      fetchDepartments()
-    }
-  }, [profile?.organization_id])
-
-  const fetchEmployees = async () => {
-    try {
-      setLoading(true)
-
-      // Fetch employees with mood data
-      const { data: employeesData, error: employeesError } = await supabase
-        .from('employees')
-        .select(`
-          id, first_name, last_name, email, phone, department, position, is_active, created_at,
-          mood_checkins(mood_score, created_at)
-        `)
-        .eq('organization_id', profile?.organization_id)
-        .order('created_at', { ascending: false })
-
-      if (employeesError) throw employeesError
-
-      // Process employees with mood statistics
-      const processedEmployees = employeesData?.map(emp => {
-        const moods = emp.mood_checkins || []
-        const avgMood = moods.length > 0
-          ? moods.reduce((sum: number, m: any) => sum + (m.mood_score || 0), 0) / moods.length
-          : null
-
-        const lastResponse = moods.length > 0
-          ? new Date(moods[0].created_at).toLocaleDateString()
-          : null
-
-        return {
-          ...emp,
-          avg_mood: avgMood ? Number(avgMood.toFixed(1)) : undefined,
-          response_count: moods.length,
-          last_response: lastResponse || undefined
+    const cachedProfile = localStorage.getItem('profile')
+    if (cachedProfile) {
+      try {
+        const parsed = JSON.parse(cachedProfile)
+        let orgCandidate = parsed.organization
+        let org: { id: string; name: string; subscription_plan: string } = { id: '', name: '', subscription_plan: '' }
+        if (Array.isArray(orgCandidate) && orgCandidate.length > 0 && typeof orgCandidate[0] === 'object') {
+          org = orgCandidate[0] as { id: string; name: string; subscription_plan: string }
+        } else if (orgCandidate && typeof orgCandidate === 'object' && !Array.isArray(orgCandidate)) {
+          org = orgCandidate as { id: string; name: string; subscription_plan: string }
         }
-      }) || []
+        setProfile({
+          id: parsed.id || '',
+          first_name: parsed.first_name || '',
+          last_name: parsed.last_name || '',
+          email: parsed.email || '',
+          role: parsed.role || '',
+          organization: org,
+          organization_id: org.id || ''
+        })
+      } catch (e) {
+        // Ignore invalid cache
+      }
+    }
+  }, [])
 
-      setEmployees(processedEmployees)
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
+  // MOCK DATA for employees and departments
+  useEffect(() => {
+    setLoading(true)
+    setTimeout(() => {
+      setEmployees([
+        {
+          id: '1',
+          first_name: 'Alice',
+          last_name: 'Johnson',
+          email: 'alice@example.com',
+          phone: '+254700000001',
+          department: 'Engineering',
+          position: 'Developer',
+          is_active: true,
+          created_at: '2024-01-01',
+          last_response: '2024-07-01',
+          avg_mood: 4.5,
+          response_count: 12
+        },
+        {
+          id: '2',
+          first_name: 'Bob',
+          last_name: 'Smith',
+          email: 'bob@example.com',
+          phone: '+254700000002',
+          department: 'Design',
+          position: 'Designer',
+          is_active: false,
+          created_at: '2024-01-02',
+          last_response: '2024-06-28',
+          avg_mood: 3.8,
+          response_count: 8
+        }
+      ])
+      setDepartments([
+        { name: 'Engineering', count: 1 },
+        { name: 'Design', count: 1 }
+      ])
       setLoading(false)
-    }
-  }
-
-  const fetchDepartments = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('department')
-        .eq('organization_id', profile?.organization_id)
-        .eq('is_active', true)
-
-      if (error) throw error
-
-      // Count employees by department
-      const deptCounts = data?.reduce((acc: Record<string, number>, emp) => {
-        const dept = emp.department || 'Unassigned'
-        acc[dept] = (acc[dept] || 0) + 1
-        return acc
-      }, {}) || {}
-
-      const deptList = Object.entries(deptCounts).map(([name, count]) => ({
-        name,
-        count: count as number
-      }))
-
-      setDepartments(deptList)
-    } catch (err: any) {
-      console.error('Error fetching departments:', err)
-    }
-  }
+    }, 500)
+  }, [])
 
   // Filter employees
   const filteredEmployees = employees.filter(employee => {
@@ -150,7 +142,46 @@ export default function Employees() {
           <div className="text-red-600 text-lg font-medium">Error loading employees</div>
           <p className="text-gray-600 mt-2">{error}</p>
           <button
-            onClick={fetchEmployees}
+            onClick={() => {
+              setLoading(true)
+              setTimeout(() => {
+                setEmployees([
+                  {
+                    id: '1',
+                    first_name: 'Alice',
+                    last_name: 'Johnson',
+                    email: 'alice@example.com',
+                    phone: '+254700000001',
+                    department: 'Engineering',
+                    position: 'Developer',
+                    is_active: true,
+                    created_at: '2024-01-01',
+                    last_response: '2024-07-01',
+                    avg_mood: 4.5,
+                    response_count: 12
+                  },
+                  {
+                    id: '2',
+                    first_name: 'Bob',
+                    last_name: 'Smith',
+                    email: 'bob@example.com',
+                    phone: '+254700000002',
+                    department: 'Design',
+                    position: 'Designer',
+                    is_active: false,
+                    created_at: '2024-01-02',
+                    last_response: '2024-06-28',
+                    avg_mood: 3.8,
+                    response_count: 8
+                  }
+                ])
+                setDepartments([
+                  { name: 'Engineering', count: 1 },
+                  { name: 'Design', count: 1 }
+                ])
+                setLoading(false)
+              }, 500)
+            }}
             className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
           >
             Try Again
@@ -193,7 +224,46 @@ export default function Employees() {
                 <span>Import CSV</span>
               </button>
               <button
-                onClick={fetchEmployees}
+                onClick={() => {
+                  setLoading(true)
+                  setTimeout(() => {
+                    setEmployees([
+                      {
+                        id: '1',
+                        first_name: 'Alice',
+                        last_name: 'Johnson',
+                        email: 'alice@example.com',
+                        phone: '+254700000001',
+                        department: 'Engineering',
+                        position: 'Developer',
+                        is_active: true,
+                        created_at: '2024-01-01',
+                        last_response: '2024-07-01',
+                        avg_mood: 4.5,
+                        response_count: 12
+                      },
+                      {
+                        id: '2',
+                        first_name: 'Bob',
+                        last_name: 'Smith',
+                        email: 'bob@example.com',
+                        phone: '+254700000002',
+                        department: 'Design',
+                        position: 'Designer',
+                        is_active: false,
+                        created_at: '2024-01-02',
+                        last_response: '2024-06-28',
+                        avg_mood: 3.8,
+                        response_count: 8
+                      }
+                    ])
+                    setDepartments([
+                      { name: 'Engineering', count: 1 },
+                      { name: 'Design', count: 1 }
+                    ])
+                    setLoading(false)
+                  }, 500)
+                }}
                 className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
                 title="Refresh"
               >
@@ -416,8 +486,31 @@ export default function Employees() {
           onClose={() => setShowAddModal(false)}
           onSuccess={() => {
             setShowAddModal(false)
-            fetchEmployees()
-            fetchDepartments()
+            setLoading(true)
+            setTimeout(() => {
+              setEmployees([
+                ...employees,
+                {
+                  id: (employees.length + 1).toString(),
+                  first_name: 'New',
+                  last_name: 'Employee',
+                  email: 'new@example.com',
+                  phone: '+254700000000',
+                  department: 'New',
+                  position: 'New',
+                  is_active: true,
+                  created_at: new Date().toISOString(),
+                  last_response: new Date().toISOString(),
+                  avg_mood: 4.5,
+                  response_count: 1
+                }
+              ])
+              setDepartments([
+                ...departments,
+                { name: 'New', count: 1 }
+              ])
+              setLoading(false)
+            }, 500)
           }}
           organizationId={profile?.organization_id}
         />
@@ -429,8 +522,31 @@ export default function Employees() {
           onClose={() => setShowImportModal(false)}
           onSuccess={() => {
             setShowImportModal(false)
-            fetchEmployees()
-            fetchDepartments()
+            setLoading(true)
+            setTimeout(() => {
+              setEmployees([
+                ...employees,
+                {
+                  id: (employees.length + 1).toString(),
+                  first_name: 'New',
+                  last_name: 'Employee',
+                  email: 'new@example.com',
+                  phone: '+254700000000',
+                  department: 'New',
+                  position: 'New',
+                  is_active: true,
+                  created_at: new Date().toISOString(),
+                  last_response: new Date().toISOString(),
+                  avg_mood: 4.5,
+                  response_count: 1
+                }
+              ])
+              setDepartments([
+                ...departments,
+                { name: 'New', count: 1 }
+              ])
+              setLoading(false)
+            }, 500)
           }}
           organizationId={profile?.organization_id}
         />

@@ -175,6 +175,7 @@ export async function PUT(request: NextRequest) {
     if (billing_email !== undefined) updateData.billing_email = billing_email
     if (subscription_status !== undefined) updateData.subscription_status = subscription_status
 
+    const supabaseAdmin = createSupabaseAdmin()
     const { data: organization, error } = await supabaseAdmin
       .from('organizations')
       .update(updateData)

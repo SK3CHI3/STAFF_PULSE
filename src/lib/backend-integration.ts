@@ -1,6 +1,8 @@
 // Comprehensive backend integration utilities
 import { createSupabaseAdmin } from './supabase'
 
+const supabaseAdmin = createSupabaseAdmin()
+
 // Types for backend operations
 export interface BackendResponse<T = any> {
   success: boolean
@@ -66,7 +68,6 @@ export class EmployeeManager {
     search?: string
   }): Promise<BackendResponse<EmployeeData[]>> {
     try {
-      const supabaseAdmin = createSupabaseAdmin()
       let query = supabaseAdmin
         .from('employees')
         .select(`

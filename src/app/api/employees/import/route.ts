@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
       try {
         // Check if phone number already exists
-        const { data: existingEmployee } = await supabaseAdmin
+        const { data: existingEmployee } = await createSupabaseAdmin()
           .from('employees')
           .select('id, phone')
           .eq('phone', validation.employee!.phone)
@@ -167,7 +167,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Insert employee
-        const { error: insertError } = await supabaseAdmin
+        const { error: insertError } = await createSupabaseAdmin()
           .from('employees')
           .insert({
             organization_id: organizationId,

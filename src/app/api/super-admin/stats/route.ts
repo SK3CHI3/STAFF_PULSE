@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
 
+const supabaseAdmin = createSupabaseAdmin()
+
 // Get platform-wide statistics for super admin dashboard
 export async function GET(request: NextRequest) {
   try {
@@ -28,7 +30,6 @@ export async function GET(request: NextRequest) {
         startDate.setDate(startDate.getDate() - 30)
     }
 
-    const supabaseAdmin = createSupabaseAdmin()
     // Get total organizations
     const { count: totalOrganizations } = await supabaseAdmin
       .from('organizations')

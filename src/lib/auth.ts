@@ -180,17 +180,15 @@ export async function getCurrentUser(): Promise<{ user: User | null, error: Auth
 // Get user profile with organization
 export async function getUserProfile(userId: string) {
   const supabase = createSupabaseClient()
-
+  const start = performance.now();
   try {
     const { data, error } = await supabase
       .from('profiles')
-      .select(`
-        *,
-        organization:organizations(*)
-      `)
+      .select(`id, first_name, last_name, email, role, organization:organizations(id, name, subscription_plan)`)
       .eq('id', userId)
       .single()
-
+    const duration = performance.now() - start;
+    console.log(`[PERF] getUserProfile for user ${userId} took ${duration.toFixed(2)}ms`);
     return { data, error }
   } catch (error) {
     return { 

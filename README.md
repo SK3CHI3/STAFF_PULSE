@@ -1,6 +1,12 @@
-# 🎯 STAFF_PULSE - Employee Wellness Platform
+# <img src="public/logo.svg" alt="STAFF_PULSE Logo" width="40" style="vertical-align:middle;"> STAFF_PULSE - Employee Wellness Platform
 
 A comprehensive employee wellness platform with WhatsApp integration and AI-powered insights.
+
+---
+
+**Logo meaning:** The STAFF_PULSE logo combines a pulse/heartbeat line with a group of people inside a chat bubble, symbolizing employee wellness, real-time insights, and communication. The green and blue palette represents health, trust, and calmness.
+
+---
 
 ## ✨ Features
 

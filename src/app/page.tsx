@@ -64,9 +64,7 @@ export default function Home() {
         <div className="glass backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl px-6 py-4 shadow-2xl">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                <div className="w-6 h-6 bg-white rounded-md"></div>
-              </div>
+              <img src="/logo.svg" alt="StaffPulse Logo" className="w-10 h-10 rounded-xl bg-white p-1 shadow" />
               <span className="text-xl font-bold text-gray-900">StaffPulse</span>
             </div>
             <div className="hidden md:flex items-center space-x-8">
@@ -347,10 +345,10 @@ export default function Home() {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-32 px-6 bg-gradient-to-br from-slate-900 via-gray-900 to-black relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 via-purple-600/5 to-pink-600/5"></div>
+      <section id="pricing" className="py-32 px-6 bg-gradient-to-br from-blue-900 via-emerald-900 to-teal-900 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/10 via-emerald-600/10 to-teal-600/10"></div>
         <div className="absolute top-40 left-20 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-40 right-20 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-40 right-20 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
 
         <div className="max-w-7xl mx-auto relative">
           <div className="text-center mb-20">
@@ -541,9 +539,7 @@ export default function Home() {
           <div className="grid md:grid-cols-4 gap-12 mb-12">
             <div className="md:col-span-2">
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-12 h-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-2xl flex items-center justify-center">
-                  <div className="w-8 h-8 bg-white rounded-lg opacity-90"></div>
-                </div>
+                <img src="/logo.svg" alt="StaffPulse Logo" className="w-12 h-12 rounded-2xl bg-white p-1 shadow" />
                 <span className="text-2xl font-bold text-white">StaffPulse</span>
               </div>
               <p className="text-white/60 text-lg leading-relaxed max-w-md">

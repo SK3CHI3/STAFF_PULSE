@@ -150,8 +150,9 @@ export default function OrganizationsManagement() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Glass Morphism Header */}
       <header className="backdrop-blur-md bg-white/30 border-b border-white/20 sticky top-0 z-50">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
+        <div className="px-6 py-4 flex items-center">
+          <img src="/logo.svg" alt="StaffPulse Logo" className="w-8 h-8 rounded-lg bg-white p-0.5 shadow mr-4" />
+          <div className="flex items-center justify-between w-full">
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 Organizations Management

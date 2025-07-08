@@ -10,9 +10,7 @@ export default function Demo() {
         <div className="glass backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl px-6 py-4 shadow-2xl">
           <div className="flex items-center justify-between">
             <Link href="/" className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                <div className="w-6 h-6 bg-white rounded-md"></div>
-              </div>
+              <img src="/logo.svg" alt="StaffPulse Logo" className="w-10 h-10 rounded-xl bg-white p-1 shadow" />
               <span className="text-xl font-bold text-gray-900">StaffPulse</span>
             </Link>
             <div className="hidden md:flex items-center space-x-8">

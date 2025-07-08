@@ -27,17 +27,7 @@ interface SystemAlert {
 }
 
 export default function SystemHealthPage() {
-  const [metrics, setMetrics] = useState<SystemMetrics>({
-    uptime: 99.9,
-    responseTime: 245,
-    errorRate: 0.1,
-    activeConnections: 1247,
-    databaseHealth: 98.5,
-    whatsappDeliveryRate: 97.8,
-    apiCallsToday: 15420,
-    storageUsed: 67.3
-  })
-  
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null)
   const [alerts, setAlerts] = useState<SystemAlert[]>([])
   const [performanceData, setPerformanceData] = useState<any[]>([])
   const [errorData, setErrorData] = useState<any[]>([])
@@ -58,15 +48,17 @@ export default function SystemHealthPage() {
   const fetchSystemData = async () => {
     try {
       setLoading(true)
-      
-      // Simulate fetching system metrics
-      await Promise.all([
-        fetchSystemMetrics(),
-        fetchSystemAlerts(),
-        fetchPerformanceData(),
-        fetchErrorData()
-      ])
-      
+      const res = await fetch('/api/super-admin/system-health');
+      const data = await res.json();
+      if (data.success) {
+        setMetrics(data.metrics);
+        setAlerts(data.alerts);
+        setPerformanceData(data.performanceData);
+        setErrorData(data.errorData);
+        // Optionally: setServiceHealth(data.serviceHealth) if you want to display service health dynamically
+      } else if (data.error) {
+        setError(data.error);
+      }
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -74,80 +66,51 @@ export default function SystemHealthPage() {
     }
   }
 
-  const fetchSystemMetrics = async () => {
-    // In a real implementation, these would come from monitoring services
-    // like DataDog, New Relic, or custom monitoring endpoints
-    
-    // Simulate real-time metrics with slight variations
-    setMetrics(prev => ({
-      uptime: 99.9 + (Math.random() - 0.5) * 0.1,
-      responseTime: 245 + Math.floor((Math.random() - 0.5) * 50),
-      errorRate: 0.1 + (Math.random() - 0.5) * 0.05,
-      activeConnections: 1247 + Math.floor((Math.random() - 0.5) * 100),
-      databaseHealth: 98.5 + (Math.random() - 0.5) * 2,
-      whatsappDeliveryRate: 97.8 + (Math.random() - 0.5) * 1,
-      apiCallsToday: prev.apiCallsToday + Math.floor(Math.random() * 10),
-      storageUsed: 67.3 + (Math.random() - 0.5) * 0.5
-    }))
-  }
+  // fetchSystemMetrics is now handled by fetchSystemData
 
   const fetchSystemAlerts = async () => {
-    // Mock alerts - in production, these would come from monitoring systems
-    const mockAlerts: SystemAlert[] = [
-      {
-        id: '1',
-        type: 'warning',
-        title: 'High Response Time',
-        message: 'API response time exceeded 300ms threshold',
-        timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        resolved: false
-      },
-      {
-        id: '2',
-        type: 'info',
-        title: 'Database Backup Completed',
-        message: 'Scheduled database backup completed successfully',
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-        resolved: true
-      },
-      {
-        id: '3',
-        type: 'error',
-        title: 'WhatsApp API Rate Limit',
-        message: 'Approaching WhatsApp API rate limit for organization XYZ',
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
-        resolved: true
-      }
-    ]
-    setAlerts(mockAlerts)
+    const { data, error } = await supabase
+      .from('system_alerts')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(10);
+    if (error) setError(error.message);
+    else setAlerts(data || []);
   }
 
   const fetchPerformanceData = async () => {
-    // Generate last 24 hours of performance data
-    const hours = []
-    for (let i = 23; i >= 0; i--) {
-      const time = new Date()
-      time.setHours(time.getHours() - i)
-      hours.push({
-        time: time.getHours() + ':00',
-        responseTime: 200 + Math.floor(Math.random() * 100),
-        throughput: 800 + Math.floor(Math.random() * 400),
-        errors: Math.floor(Math.random() * 10)
-      })
-    }
-    setPerformanceData(hours)
+    // Example: fetch last 24h API response times from platform_analytics
+    const { data, error } = await supabase
+      .from('platform_analytics')
+      .select('period_start, metric_value')
+      .eq('metric_name', 'api_response_time')
+      .eq('time_period', 'hourly')
+      .order('period_start', { ascending: true })
+      .limit(24);
+    if (error) setError(error.message);
+    else setPerformanceData((data || []).map(row => ({
+      time: new Date(row.period_start).getHours() + ':00',
+      responseTime: row.metric_value
+    })));
   }
 
   const fetchErrorData = async () => {
-    // Generate error breakdown data
-    const errorTypes = [
-      { name: '4xx Client Errors', value: 45, color: '#F59E0B' },
-      { name: '5xx Server Errors', value: 12, color: '#EF4444' },
-      { name: 'Database Timeouts', value: 8, color: '#8B5CF6' },
-      { name: 'WhatsApp API Errors', value: 15, color: '#EC4899' },
-      { name: 'Network Errors', value: 20, color: '#6B7280' }
-    ]
-    setErrorData(errorTypes)
+    // Fetch all error logs and aggregate by level in JS
+    const { data, error } = await supabase
+      .from('system_logs')
+      .select('level');
+    if (error) setError(error.message);
+    else {
+      // Aggregate counts by error level
+      const counts: Record<string, number> = {};
+      (data || []).forEach((row: { level: string }) => {
+        counts[row.level] = (counts[row.level] || 0) + 1;
+      });
+      setErrorData(Object.entries(counts).map(([level, count]) => ({
+        name: level,
+        value: count
+      })));
+    }
   }
 
   const resolveAlert = async (alertId: string) => {
@@ -225,43 +188,47 @@ export default function SystemHealthPage() {
         )}
 
         {/* System Status Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <SystemMetricCard
-            title="System Uptime"
-            value={`${metrics.uptime.toFixed(2)}%`}
-            status={metrics.uptime >= 99.5 ? 'healthy' : 'warning'}
-            icon={<Zap className="w-6 h-6 text-yellow-500" />}
-          />
-          <SystemMetricCard
-            title="Response Time"
-            value={`${metrics.responseTime}ms`}
-            status={metrics.responseTime <= 300 ? 'healthy' : 'warning'}
-            icon={<Timer className="w-6 h-6 text-green-500" />}
-          />
-          <SystemMetricCard
-            title="Error Rate"
-            value={`${metrics.errorRate.toFixed(2)}%`}
-            status={metrics.errorRate <= 0.5 ? 'healthy' : 'error'}
-            icon={<AlertTriangle className="w-6 h-6 text-red-500" />}
-          />
-          <SystemMetricCard
-            title="Active Connections"
-            value={metrics.activeConnections.toLocaleString()}
-            status="healthy"
-            icon={<Link2 className="w-6 h-6 text-blue-500" />}
-          />
-        </div>
+        {metrics && Object.keys(metrics).length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <SystemMetricCard
+              title="System Uptime"
+              value={metrics.uptime !== null && metrics.uptime !== undefined ? `${metrics.uptime.toFixed(2)}%` : 'N/A'}
+              status={metrics.uptime !== null && metrics.uptime !== undefined && metrics.uptime >= 99.5 ? 'healthy' : 'warning'}
+              icon={<Zap className="w-6 h-6 text-yellow-500" />}
+            />
+            <SystemMetricCard
+              title="Response Time"
+              value={metrics.responseTime !== null && metrics.responseTime !== undefined ? `${metrics.responseTime}ms` : 'N/A'}
+              status={metrics.responseTime !== null && metrics.responseTime !== undefined && metrics.responseTime <= 300 ? 'healthy' : 'warning'}
+              icon={<Timer className="w-6 h-6 text-green-500" />}
+            />
+            <SystemMetricCard
+              title="Error Rate"
+              value={metrics.errorRate !== null && metrics.errorRate !== undefined ? `${metrics.errorRate.toFixed(2)}%` : 'N/A'}
+              status={metrics.errorRate !== null && metrics.errorRate !== undefined && metrics.errorRate <= 0.5 ? 'healthy' : 'error'}
+              icon={<AlertTriangle className="w-6 h-6 text-red-500" />}
+            />
+            <SystemMetricCard
+              title="Active Connections"
+              value={metrics.activeConnections !== null && metrics.activeConnections !== undefined ? metrics.activeConnections.toLocaleString() : 'N/A'}
+              status="healthy"
+              icon={<Link2 className="w-6 h-6 text-blue-500" />}
+            />
+          </div>
+        ) : (
+          <div className="text-center text-gray-500 py-8">No metrics data available</div>
+        )}
 
         {/* Performance Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
           {/* Response Time Chart */}
-          <div className="backdrop-blur-md bg-white/40 border border-white/20 rounded-2xl p-6 shadow-lg">
+          <div className="h-full backdrop-blur-md bg-white/40 border border-white/20 rounded-2xl p-6 shadow-lg flex flex-col">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Response Time (24h)</h3>
             <ResponsiveContainer width="100%" height={250}>
-              <LineChart data={performanceData}>
+              <LineChart data={performanceData} margin={{ left: 40, right: 20, top: 20, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="time" stroke="#6B7280" />
-                <YAxis stroke="#6B7280" />
+                <YAxis stroke="#6B7280" domain={[0, 400]} />
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: 'rgba(255, 255, 255, 0.95)', 
@@ -277,18 +244,27 @@ export default function SystemHealthPage() {
                   strokeWidth={2}
                   dot={false}
                 />
+                {(!performanceData || performanceData.length === 0) && (
+                  <text
+                    x="50%" y="50%" textAnchor="middle"
+                    fill="#aaa" fontSize={16}
+                    dy={-10}
+                  >
+                    No data available
+                  </text>
+                )}
               </LineChart>
             </ResponsiveContainer>
           </div>
 
           {/* Error Breakdown */}
-          <div className="backdrop-blur-md bg-white/40 border border-white/20 rounded-2xl p-6 shadow-lg">
+          <div className="h-full backdrop-blur-md bg-white/40 border border-white/20 rounded-2xl p-6 shadow-lg flex flex-col">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Error Breakdown</h3>
             <ResponsiveContainer width="100%" height={250}>
-              <BarChart data={errorData}>
+              <BarChart data={errorData} margin={{ left: 40, right: 20, top: 20, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="name" stroke="#6B7280" angle={-45} textAnchor="end" height={80} />
-                <YAxis stroke="#6B7280" />
+                <XAxis dataKey="name" stroke="#6B7280" angle={0} textAnchor="middle" height={80} />
+                <YAxis stroke="#6B7280" domain={[0, 400]} />
                 <Tooltip 
                   contentStyle={{ 
                     backgroundColor: 'rgba(255, 255, 255, 0.95)', 
@@ -298,51 +274,17 @@ export default function SystemHealthPage() {
                   }} 
                 />
                 <Bar dataKey="value" fill="#EF4444" radius={[4, 4, 0, 0]} />
+                {(!errorData || errorData.length === 0) && (
+                  <text
+                    x="50%" y="50%" textAnchor="middle"
+                    fill="#aaa" fontSize={16}
+                    dy={-10}
+                  >
+                    No data available
+                  </text>
+                )}
               </BarChart>
             </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* System Services Status */}
-        <div className="backdrop-blur-md bg-white/40 border border-white/20 rounded-2xl p-6 shadow-lg">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Service Health</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <ServiceStatus
-              name="Database"
-              status="healthy"
-              uptime="99.9%"
-              lastCheck="2 min ago"
-            />
-            <ServiceStatus
-              name="WhatsApp API"
-              status="healthy"
-              uptime="97.8%"
-              lastCheck="1 min ago"
-            />
-            <ServiceStatus
-              name="Authentication"
-              status="healthy"
-              uptime="99.5%"
-              lastCheck="30 sec ago"
-            />
-            <ServiceStatus
-              name="File Storage"
-              status="warning"
-              uptime="98.2%"
-              lastCheck="5 min ago"
-            />
-            <ServiceStatus
-              name="Email Service"
-              status="healthy"
-              uptime="99.1%"
-              lastCheck="1 min ago"
-            />
-            <ServiceStatus
-              name="Analytics"
-              status="healthy"
-              uptime="99.7%"
-              lastCheck="30 sec ago"
-            />
           </div>
         </div>
 
@@ -351,12 +293,12 @@ export default function SystemHealthPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900">System Alerts</h3>
             <span className="text-sm text-gray-600">
-              {alerts.filter(a => !a.resolved).length} active alerts
+              {alerts && alerts.filter(a => !a.resolved).length} active alerts
             </span>
           </div>
           
           <div className="space-y-3">
-            {alerts.length === 0 ? (
+            {alerts && alerts.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
                 <p>No system alerts</p>

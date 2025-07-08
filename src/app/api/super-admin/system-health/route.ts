@@ -85,37 +85,29 @@ async function getSystemMetrics(startDate: Date, endDate: Date) {
       .gte('created_at', startDate.toISOString())
       .lte('created_at', endDate.toISOString())
 
-    // Calculate uptime (mock - would come from monitoring service)
-    const uptime = 99.9 + (Math.random() - 0.5) * 0.2
+    // If no real data, return nulls
+    if (apiCalls === null && errorCount === null && dbError) {
+      return null;
+    }
 
     // Calculate error rate
-    const totalRequests = (apiCalls || 0) + 1000 // Add estimated other requests
-    const errorRate = totalRequests > 0 ? ((errorCount || 0) / totalRequests) * 100 : 0
+    const totalRequests = (apiCalls || 0)
+    const errorRate = totalRequests > 0 ? ((errorCount || 0) / totalRequests) * 100 : null
 
     return {
-      uptime: Number(uptime.toFixed(2)),
-      responseTime: dbResponseTime,
-      errorRate: Number(errorRate.toFixed(3)),
+      uptime: null, // No real uptime data
+      responseTime: dbResponseTime || null,
+      errorRate: errorRate,
       apiCalls: apiCalls || 0,
       errorCount: errorCount || 0,
       databaseHealth: dbError ? 0 : 100,
-      activeConnections: Math.floor(Math.random() * 200) + 800, // Mock data
-      memoryUsage: Math.floor(Math.random() * 30) + 60, // Mock data
-      cpuUsage: Math.floor(Math.random() * 40) + 20 // Mock data
+      activeConnections: null, // No real data
+      memoryUsage: null, // No real data
+      cpuUsage: null // No real data
     }
   } catch (error) {
     console.error('Error getting system metrics:', error)
-    return {
-      uptime: 0,
-      responseTime: 0,
-      errorRate: 100,
-      apiCalls: 0,
-      errorCount: 0,
-      databaseHealth: 0,
-      activeConnections: 0,
-      memoryUsage: 0,
-      cpuUsage: 0
-    }
+    return null;
   }
 }
 
@@ -152,122 +144,50 @@ async function getServiceHealth() {
 
 // Get performance data over time
 async function getPerformanceData(timeframe: string) {
-  const periods = timeframe === '24h' ? 24 : timeframe === '7d' ? 7 : 24
-  const data = []
-
-  for (let i = periods - 1; i >= 0; i--) {
-    const time = new Date()
-    
-    if (timeframe === '24h') {
-      time.setHours(time.getHours() - i)
-    } else {
-      time.setDate(time.getDate() - i)
-    }
-
-    // Mock performance data - in production, this would come from monitoring
-    data.push({
-      time: timeframe === '24h' ? time.getHours() + ':00' : time.toLocaleDateString(),
-      responseTime: 200 + Math.floor(Math.random() * 100),
-      throughput: 800 + Math.floor(Math.random() * 400),
-      errors: Math.floor(Math.random() * 10),
-      cpuUsage: 20 + Math.floor(Math.random() * 40),
-      memoryUsage: 60 + Math.floor(Math.random() * 30)
-    })
-  }
-
-  return data
+  // Try to get real data from platform_analytics
+  const { data, error } = await supabaseAdmin
+    .from('platform_analytics')
+    .select('period_start, metric_value')
+    .eq('metric_name', 'api_response_time')
+    .eq('time_period', 'hourly')
+    .order('period_start', { ascending: true })
+    .limit(24);
+  if (error || !data || data.length === 0) return [];
+  return data.map(row => ({
+    time: new Date(row.period_start).getHours() + ':00',
+    responseTime: row.metric_value
+  }));
 }
 
 // Get error breakdown data
 async function getErrorData(startDate: Date, endDate: Date) {
-  try {
-    // In production, this would query actual error logs
-    // For now, return mock data based on common error patterns
-    
-    const errorTypes = [
-      { name: '4xx Client Errors', value: 45, color: '#F59E0B' },
-      { name: '5xx Server Errors', value: 12, color: '#EF4444' },
-      { name: 'Database Timeouts', value: 8, color: '#8B5CF6' },
-      { name: 'WhatsApp API Errors', value: 15, color: '#EC4899' },
-      { name: 'Network Errors', value: 20, color: '#6B7280' }
-    ]
-
-    return errorTypes
-  } catch (error) {
-    console.error('Error getting error data:', error)
-    return []
-  }
+  // Get all error logs and aggregate by level
+  const { data, error } = await supabaseAdmin
+    .from('system_logs')
+    .select('level')
+    .gte('created_at', startDate.toISOString())
+    .lte('created_at', endDate.toISOString());
+  if (error || !data || data.length === 0) return [];
+  const counts: Record<string, number> = {};
+  data.forEach((row: { level: string }) => {
+    counts[row.level] = (counts[row.level] || 0) + 1;
+  });
+  return Object.entries(counts).map(([level, count]) => ({
+    name: level,
+    value: count
+  }));
 }
 
 // Get system alerts
 async function getSystemAlerts() {
-  try {
-    // In production, this would query actual alert/monitoring systems
-    // For now, return mock alerts based on current metrics
-    
-    const alerts = []
-    
-    // Check for high error rates
-    const { count: recentErrors } = await supabaseAdmin
-      .from('system_logs')
-      .select('*', { count: 'exact', head: true })
-      .eq('level', 'error')
-      .gte('created_at', new Date(Date.now() - 60 * 60 * 1000).toISOString()) // Last hour
-
-    if ((recentErrors || 0) > 10) {
-      alerts.push({
-        id: 'high-error-rate',
-        type: 'error',
-        title: 'High Error Rate Detected',
-        message: `${recentErrors} errors in the last hour`,
-        timestamp: new Date().toISOString(),
-        resolved: false
-      })
-    }
-
-    // Check for low response rates
-    const { count: recentResponses } = await supabaseAdmin
-      .from('mood_checkins')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Last 24 hours
-
-    const { count: totalEmployees } = await supabaseAdmin
-      .from('employees')
-      .select('*', { count: 'exact', head: true })
-      .eq('is_active', true)
-
-    const responseRate = totalEmployees && totalEmployees > 0 
-      ? ((recentResponses || 0) / totalEmployees) * 100 
-      : 0
-
-    if (responseRate < 30) {
-      alerts.push({
-        id: 'low-response-rate',
-        type: 'warning',
-        title: 'Low Response Rate',
-        message: `Platform response rate is ${responseRate.toFixed(1)}%`,
-        timestamp: new Date().toISOString(),
-        resolved: false
-      })
-    }
-
-    // Add some mock alerts for demonstration
-    if (Math.random() > 0.7) {
-      alerts.push({
-        id: 'database-slow',
-        type: 'warning',
-        title: 'Database Performance',
-        message: 'Database queries are running slower than usual',
-        timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        resolved: false
-      })
-    }
-
-    return alerts
-  } catch (error) {
-    console.error('Error getting system alerts:', error)
-    return []
-  }
+  // Only return real alerts from system_alerts table
+  const { data, error } = await supabaseAdmin
+    .from('system_alerts')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error || !data) return [];
+  return data;
 }
 
 // Create system alert

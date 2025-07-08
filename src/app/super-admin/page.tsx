@@ -780,28 +780,10 @@ function CustomXAxisTick({ x, y, payload, index, selectedTimeframe }: {
   index: number;
   selectedTimeframe: string;
 }) {
-  let show = true;
-  let label = payload.value;
-  if (selectedTimeframe === '7d' || selectedTimeframe === '30d') {
-    show = true;
-  } else if (selectedTimeframe === '90d') {
-    show = index % 2 === 0;
-  } else if (selectedTimeframe === '1y') {
-    show = index % 3 === 0;
-  }
-  if (!show) return null;
   return (
     <g transform={`translate(${x},${y})`}>
-      <text
-        x={0}
-        y={0}
-        dy={16}
-        textAnchor="end"
-        fill="#6B7280"
-        fontSize={12}
-        transform="rotate(-35)"
-      >
-        {label.length > 12 ? label.slice(0, 12) + '…' : label}
+      <text x={0} y={0} dy={16} textAnchor="middle" fill="#6B7280" fontSize={13}>
+        {payload.value}
       </text>
     </g>
   );

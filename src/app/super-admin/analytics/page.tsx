@@ -338,13 +338,15 @@ export default function SuperAdminAnalytics() {
       .gte('created_at', rangeStart.toISOString());
     if (error) throw error;
     // Group by hour
-    const byHour = Array.from({ length: 24 }, (_, i) => ({ hour: i, messages: 0, responses: 0 }));
+    const byHour = Array.from({ length: 24 }, (_, i) => ({ hour: i, label: i.toString().padStart(2, '0'), messages: 0, responses: 0 }));
     moods?.forEach(m => {
       const d = new Date(m.created_at);
       const hour = d.getHours();
       byHour[hour].messages++;
       byHour[hour].responses++;
     });
+    // Sort by hour to ensure order is 00-23
+    byHour.sort((a, b) => a.hour - b.hour);
     return byHour;
   }
 
@@ -357,19 +359,10 @@ export default function SuperAdminAnalytics() {
 
   // Custom XAxis tick renderer for better label spacing and formatting
   function CustomXAxisTick({ x, y, payload }: { x: number; y: number; payload: { value: string } }) {
-    const label = payload.value;
     return (
       <g transform={`translate(${x},${y})`}>
-        <text
-          x={0}
-          y={0}
-          dy={16}
-          textAnchor="end"
-          fill="#6B7280"
-          fontSize={12}
-          transform="rotate(-35)"
-        >
-          {label.length > 12 ? label.slice(0, 12) + '…' : label}
+        <text x={0} y={0} dy={16} textAnchor="middle" fill="#6B7280" fontSize={13}>
+          {payload.value}
         </text>
       </g>
     );
@@ -448,34 +441,57 @@ export default function SuperAdminAnalytics() {
 
         {/* Key Performance Indicators */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <KPICard
-            title="Total Revenue"
-            value={`Ksh ${analyticsData.revenueData[analyticsData.revenueData.length-1]?.revenue?.toLocaleString() || '0'}`}
-            change="+23.5%"
-            trend="up"
-            icon={<DollarSign className="w-6 h-6 text-green-600" />}
-          />
-          <KPICard
-            title="Monthly Recurring Revenue"
-            value={`Ksh ${analyticsData.revenueData[analyticsData.revenueData.length-1]?.mrr?.toLocaleString() || '0'}`}
-            change="+18.2%"
-            trend="up"
-            icon={<TrendingUp className="w-6 h-6 text-green-600" />}
-          />
-          <KPICard
-            title="Customer Lifetime Value"
-            value={`Ksh ${analyticsData.revenueData[analyticsData.revenueData.length-1]?.churn?.toLocaleString() || '0'}`}
-            change="+12.1%"
-            trend="up"
-            icon={<Users className="w-6 h-6 text-green-600" />}
-          />
-          <KPICard
-            title="Churn Rate"
-            value={`${analyticsData.revenueData[analyticsData.revenueData.length-1]?.churn?.toFixed(1) || '0'}%`}
-            change="-0.8%"
-            trend="down"
-            icon={<ArrowDown className="w-6 h-6 text-red-600" />}
-          />
+          {(() => {
+            const revData = analyticsData.revenueData;
+            const last = revData[revData.length-1] || {};
+            const prev = revData[revData.length-2] || {};
+            // Total Revenue
+            const totalRevenue = last.revenue || 0;
+            const prevRevenue = prev.revenue || 0;
+            const revenueChange = prevRevenue ? ((totalRevenue - prevRevenue) / prevRevenue) * 100 : 0;
+            // MRR
+            const mrr = last.mrr || 0;
+            const prevMRR = prev.mrr || 0;
+            const mrrChange = prevMRR ? ((mrr - prevMRR) / prevMRR) * 100 : 0;
+            // CLV (using churn as placeholder, you may want to replace with real CLV logic)
+            const clv = last.churn || 0;
+            const prevCLV = prev.churn || 0;
+            const clvChange = prevCLV ? ((clv - prevCLV) / prevCLV) * 100 : 0;
+            // Churn Rate
+            const churn = last.churn || 0;
+            const prevChurn = prev.churn || 0;
+            const churnChange = prevChurn ? ((churn - prevChurn) / prevChurn) * 100 : 0;
+            return <>
+              <KPICard
+                title="Total Revenue"
+                value={`Ksh ${totalRevenue.toLocaleString()}`}
+                change={`${revenueChange >= 0 ? '+' : ''}${revenueChange.toFixed(1)}%`}
+                trend={revenueChange >= 0 ? 'up' : 'down'}
+                icon={<DollarSign className="w-6 h-6 text-green-600" />}
+              />
+              <KPICard
+                title="Monthly Recurring Revenue"
+                value={`Ksh ${mrr.toLocaleString()}`}
+                change={`${mrrChange >= 0 ? '+' : ''}${mrrChange.toFixed(1)}%`}
+                trend={mrrChange >= 0 ? 'up' : 'down'}
+                icon={<TrendingUp className="w-6 h-6 text-green-600" />}
+              />
+              <KPICard
+                title="Customer Lifetime Value"
+                value={`Ksh ${clv.toLocaleString()}`}
+                change={`${clvChange >= 0 ? '+' : ''}${clvChange.toFixed(1)}%`}
+                trend={clvChange >= 0 ? 'up' : 'down'}
+                icon={<Users className="w-6 h-6 text-green-600" />}
+              />
+              <KPICard
+                title="Churn Rate"
+                value={`${churn.toFixed(1)}%`}
+                change={`${churnChange >= 0 ? '+' : ''}${churnChange.toFixed(1)}%`}
+                trend={churnChange >= 0 ? 'up' : 'down'}
+                icon={<ArrowDown className="w-6 h-6 text-red-600" />}
+              />
+            </>;
+          })()}
         </div>
 
         {/* Growth Charts */}
@@ -540,7 +556,7 @@ export default function SuperAdminAnalytics() {
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={analyticsData.usagePatterns}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="hour" stroke="#6B7280" />
+                <XAxis dataKey="label" stroke="#6B7280" />
                 <YAxis stroke="#6B7280" domain={[0, 'auto']} />
                 <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
                 <Area type="monotone" dataKey="messages" stackId="1" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.6} />

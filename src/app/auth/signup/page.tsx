@@ -41,18 +41,27 @@ export default function Signup() {
 
     try {
       const { signUp } = await import('@/lib/auth')
+      // 1. Create user in Supabase Auth
       const { user, error } = await signUp(formData)
-
-      if (error) {
-        alert(error.message)
+      if (error || !user) {
+        alert(error?.message || 'Failed to create user account')
         setIsLoading(false)
         return
       }
-
-      if (user) {
-        // Redirect to dashboard on successful signup
-        window.location.href = '/dashboard'
+      // 2. Call secure API route to create org/profile
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, userId: user.id })
+      })
+      const result = await res.json()
+      if (!res.ok || !result.success) {
+        alert(result.error || 'Failed to complete signup. Please try again.')
+        setIsLoading(false)
+        return
       }
+      // 3. Redirect to dashboard
+      window.location.href = '/dashboard'
     } catch (error) {
       console.error('Signup error:', error)
       alert('An error occurred during signup. Please try again.')
@@ -118,7 +127,7 @@ export default function Signup() {
                     value={formData.firstName}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                     placeholder="John"
                   />
                 </div>
@@ -133,7 +142,7 @@ export default function Signup() {
                     value={formData.lastName}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                     placeholder="Doe"
                   />
                 </div>
@@ -150,7 +159,7 @@ export default function Signup() {
                   value={formData.email}
                   onChange={handleInputChange}
                   required
-                  className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                  className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                   placeholder="john@company.com"
                 />
               </div>
@@ -167,7 +176,7 @@ export default function Signup() {
                     value={formData.companyName}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                     placeholder="Acme Corp"
                   />
                 </div>
@@ -205,7 +214,7 @@ export default function Signup() {
                     value={formData.password}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                     placeholder="Create a strong password"
                   />
                   <button
@@ -239,7 +248,7 @@ export default function Signup() {
                     value={formData.confirmPassword}
                     onChange={handleInputChange}
                     required
-                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                     placeholder="Confirm your password"
                   />
                   <button

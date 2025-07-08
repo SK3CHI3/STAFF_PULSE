@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
+import { Zap, Timer, AlertTriangle, Link2, RefreshCw, CheckCircle, XCircle, AlertCircle, Info } from 'lucide-react'
 
 interface SystemMetrics {
   uptime: number
@@ -176,11 +177,11 @@ export default function SystemHealthPage() {
   const getAlertIcon = (type: string) => {
     switch (type) {
       case 'error':
-        return '🔴'
+        return <XCircle className="w-6 h-6 text-red-500" />
       case 'warning':
-        return '🟡'
+        return <AlertTriangle className="w-6 h-6 text-yellow-500" />
       default:
-        return '🔵'
+        return <Info className="w-6 h-6 text-blue-500" />
     }
   }
 
@@ -207,33 +208,13 @@ export default function SystemHealthPage() {
                 onClick={fetchSystemData}
                 className="backdrop-blur-md bg-blue-500/20 hover:bg-blue-500/30 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl transition-all duration-200 flex items-center space-x-2"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
+                <RefreshCw className="w-4 h-4" />
                 <span>Refresh</span>
               </button>
             </div>
           </div>
         </div>
       </header>
-
-      {/* Navigation */}
-      <div className="px-6 pt-6">
-        <div className="flex space-x-1 mb-6">
-          <a href="/super-admin" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            Overview
-          </a>
-          <a href="/super-admin/organizations" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            Organizations
-          </a>
-          <a href="/super-admin/analytics" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            Analytics
-          </a>
-          <button className="backdrop-blur-md bg-blue-500/20 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl font-medium">
-            System Health
-          </button>
-        </div>
-      </div>
 
       {/* Content */}
       <main className="px-6 pb-6 space-y-6">
@@ -249,25 +230,25 @@ export default function SystemHealthPage() {
             title="System Uptime"
             value={`${metrics.uptime.toFixed(2)}%`}
             status={metrics.uptime >= 99.5 ? 'healthy' : 'warning'}
-            icon="⚡"
+            icon={<Zap className="w-6 h-6 text-yellow-500" />}
           />
           <SystemMetricCard
             title="Response Time"
             value={`${metrics.responseTime}ms`}
             status={metrics.responseTime <= 300 ? 'healthy' : 'warning'}
-            icon="⏱️"
+            icon={<Timer className="w-6 h-6 text-green-500" />}
           />
           <SystemMetricCard
             title="Error Rate"
             value={`${metrics.errorRate.toFixed(2)}%`}
             status={metrics.errorRate <= 0.5 ? 'healthy' : 'error'}
-            icon="🚨"
+            icon={<AlertTriangle className="w-6 h-6 text-red-500" />}
           />
           <SystemMetricCard
             title="Active Connections"
             value={metrics.activeConnections.toLocaleString()}
             status="healthy"
-            icon="🔗"
+            icon={<Link2 className="w-6 h-6 text-blue-500" />}
           />
         </div>
 
@@ -377,7 +358,7 @@ export default function SystemHealthPage() {
           <div className="space-y-3">
             {alerts.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
-                <div className="text-4xl mb-2">✅</div>
+                <CheckCircle className="w-8 h-8 text-green-500 mx-auto mb-2" />
                 <p>No system alerts</p>
               </div>
             ) : (
@@ -427,7 +408,7 @@ function SystemMetricCard({ title, value, status, icon }: {
   title: string
   value: string
   status: 'healthy' | 'warning' | 'error'
-  icon: string
+  icon: React.ReactNode
 }) {
   const statusColors = {
     healthy: 'from-green-500/20 to-green-600/20 border-green-200/30 text-green-700',

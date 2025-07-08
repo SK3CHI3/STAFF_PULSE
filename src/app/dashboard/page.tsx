@@ -1,9 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { getCurrentUser, getUserProfile, signOut } from '@/lib/auth'
 import { User } from '@supabase/supabase-js'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { supabase } from '@/lib/supabase'
+import ReactDatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import { setHours, setMinutes } from 'date-fns';
 
 interface UserProfile {
   id: string
@@ -23,6 +27,19 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState('30d')
+  const [showCheckinModal, setShowCheckinModal] = useState(false)
+  const [selectedDept, setSelectedDept] = useState('all')
+  const [sendType, setSendType] = useState<'now' | 'schedule'>('now')
+  const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
+  const [dateError, setDateError] = useState<string | null>(null)
+  const [departments, setDepartments] = useState<{ name: string; count: number }[]>([])
+  const [departmentsLoading, setDepartmentsLoading] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | null }>({ message: '', type: null })
+  const [recurrence, setRecurrence] = useState<'once' | 'weekly'>('once')
+  const [dayOfWeek, setDayOfWeek] = useState<number>(1)
+  const daysOfWeek = [
+    'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
+  ]
 
   // Mood data state for dynamic chart
   const [moodData, setMoodData] = useState([
@@ -34,6 +51,15 @@ export default function Dashboard() {
     { day: 'Sat', mood: 3.9 },
     { day: 'Sun', mood: 4.3 },
   ])
+
+  // Mock departments (replace with real fetch if needed)
+  const mockDepartments = [
+    { name: 'All Departments', value: 'all' },
+    { name: 'Engineering', value: 'Engineering' },
+    { name: 'Design', value: 'Design' },
+    { name: 'Marketing', value: 'Marketing' },
+    { name: 'Sales', value: 'Sales' },
+  ]
 
   // Try to load cached profile from localStorage first
   useEffect(() => {
@@ -130,26 +156,6 @@ export default function Dashboard() {
     loadUserData()
   }, [])
 
-  // MOCK DATA for dashboard stats and profile
-  useEffect(() => {
-    setLoading(true)
-    setTimeout(() => {
-      setProfile({
-        id: '1',
-        first_name: 'Alice',
-        last_name: 'Johnson',
-        email: 'alice@example.com',
-        role: 'hr_admin',
-        organization: {
-          id: 'org1',
-          name: 'Acme Corp',
-          subscription_plan: 'pro'
-        }
-      })
-      setLoading(false)
-    }, 500)
-  }, [])
-
   // Helper to get last N month names
   function getLastNMonths(n: number) {
     const months = [
@@ -194,6 +200,44 @@ export default function Dashboard() {
     }
   }, [timeRange])
 
+  // Fetch departments when modal opens
+  useEffect(() => {
+    if (showCheckinModal) {
+      setDepartmentsLoading(true);
+      // Fetch unique departments for the current org
+      const fetchDepartments = async () => {
+        const profileStr = localStorage.getItem('profile');
+        let orgId = '';
+        if (profileStr) {
+          try {
+            const parsed = JSON.parse(profileStr);
+            orgId = parsed.organization?.id || parsed.organization_id || '';
+          } catch {}
+        }
+        if (!orgId) {
+          setDepartments([]);
+          setDepartmentsLoading(false);
+          return;
+        }
+        const { data, error } = await supabase
+          .from('employees')
+          .select('department')
+          .eq('organization_id', orgId)
+          .neq('department', null);
+        if (error) {
+          setDepartments([]);
+          setDepartmentsLoading(false);
+          setToast({ message: 'Failed to load departments', type: 'error' });
+          return;
+        }
+        const unique = Array.from(new Set((data || []).map((e: any) => e.department))).filter(Boolean);
+        setDepartments([{ name: 'All Departments', count: 0 }, ...unique.map((name: string) => ({ name, count: 0 }))]);
+        setDepartmentsLoading(false);
+      };
+      fetchDepartments();
+    }
+  }, [showCheckinModal]);
+
   const handleSignOut = async () => {
     try {
       await signOut()
@@ -202,6 +246,66 @@ export default function Dashboard() {
       console.error('Sign out error:', error)
     }
   }
+
+  const [saving, setSaving] = useState(false);
+
+  const handleSendCheckin = async () => {
+    setSaving(true);
+    setShowCheckinModal(false);
+    try {
+      if (sendType === 'schedule') {
+        // Call API to schedule (with recurrence)
+        const profileStr = localStorage.getItem('profile');
+        let orgId = '', userId = '';
+        if (profileStr) {
+          try {
+            const parsed = JSON.parse(profileStr);
+            orgId = parsed.organization?.id || parsed.organization_id || '';
+            userId = parsed.id || '';
+          } catch {}
+        }
+        if (!orgId || !userId) {
+          setToast({ message: 'User or organization not found. Please log in again.', type: 'error' });
+          setSaving(false);
+          return;
+        }
+        const payload = {
+          organization_id: orgId,
+          department: selectedDept === 'All Departments' ? null : selectedDept,
+          scheduled_at: scheduleDate ? scheduleDate.toISOString() : '',
+          created_by: userId,
+          message: '',
+          recurrence,
+          day_of_week: recurrence === 'weekly' ? dayOfWeek : null,
+        };
+        console.log('Schedule payload:', payload);
+        const res = await fetch('/api/checkins/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          setToast({ message: 'Check-in scheduled!', type: 'success' });
+        } else {
+          const result = await res.json();
+          setToast({ message: result.error || 'Failed to schedule check-in', type: 'error' });
+        }
+      } else {
+        setToast({ message: 'Check-in sent!', type: 'success' });
+      }
+    } catch (err) {
+      setToast({ message: 'An error occurred. Please try again.', type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  useEffect(() => {
+    if (toast.message) {
+      const timer = setTimeout(() => setToast({ message: '', type: null }), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   if (!profile && loading) {
     return (
@@ -235,7 +339,10 @@ export default function Dashboard() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <button className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2">
+              <button
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2"
+                onClick={() => setShowCheckinModal(true)}
+              >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
@@ -353,12 +460,12 @@ export default function Dashboard() {
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={moodData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
-                  <defs>
+                <defs>
                     <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3BB273" stopOpacity={0.4}/>
                       <stop offset="95%" stopColor="#3BB273" stopOpacity={0.05}/>
-                    </linearGradient>
-                  </defs>
+                  </linearGradient>
+                </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="day" tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
                   <YAxis domain={[1, 5]} tickCount={5} tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
@@ -426,6 +533,145 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Check-in Modal */}
+        {showCheckinModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md relative">
+              <button
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl"
+                onClick={() => setShowCheckinModal(false)}
+                aria-label="Close"
+              >
+                &times;
+              </button>
+              <h2 className="text-xl font-bold mb-4 text-gray-900">Send Check-in</h2>
+              <div className="mb-4">
+                <label className="block text-gray-900 font-medium mb-2">Department</label>
+                {departmentsLoading ? (
+                  <div className="flex items-center space-x-2 text-gray-700"><span className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></span> Loading...</div>
+                ) : departments.length > 1 ? (
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                    value={selectedDept}
+                    onChange={e => setSelectedDept(e.target.value)}
+                  >
+                    {departments.map(dept => (
+                      <option key={dept.name} value={dept.name} className="text-gray-900">{dept.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="text-gray-700 text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                    No departments found. The check-in will be sent to all employees.
+                  </div>
+                )}
+              </div>
+              <div className="mb-4">
+                <label className="block text-gray-900 font-medium mb-2">Send Type</label>
+                <div className="flex items-center space-x-6">
+                  <label className="flex items-center text-gray-900">
+                    <input
+                      type="radio"
+                      name="sendType"
+                      value="now"
+                      checked={sendType === 'now'}
+                      onChange={() => setSendType('now')}
+                      className="mr-2"
+                    />
+                    <span className="text-gray-900">Send Now</span>
+                  </label>
+                  <label className="flex items-center text-gray-900">
+                    <input
+                      type="radio"
+                      name="sendType"
+                      value="schedule"
+                      checked={sendType === 'schedule'}
+                      onChange={() => setSendType('schedule')}
+                      className="mr-2"
+                    />
+                    <span className="text-gray-900">Schedule</span>
+                  </label>
+                </div>
+              </div>
+              {sendType === 'schedule' && (
+                <>
+                  <div className="mb-4">
+                    <label className="block text-gray-900 font-medium mb-2">Schedule Date & Time</label>
+                    <ReactDatePicker
+                      selected={scheduleDate}
+                      onChange={date => {
+                        setScheduleDate(date);
+                        // Validate date: must be in the future
+                        if (!date || date <= new Date()) {
+                          setDateError('Please select a future date and time.');
+                        } else {
+                          setDateError(null);
+                        }
+                      }}
+                      showTimeSelect
+                      timeFormat="HH:mm"
+                      timeIntervals={15}
+                      dateFormat="MMMM d, yyyy h:mm aa"
+                      minDate={new Date()}
+                      minTime={setHours(setMinutes(new Date(), 0), 0)}
+                      maxTime={setHours(setMinutes(new Date(), 45), 23)}
+                      className={`w-full px-3 py-2 border ${dateError ? 'border-red-500' : 'border-gray-300'} rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900`}
+                      placeholderText="Select date and time"
+                    />
+                    {dateError && <div className="text-red-600 text-sm mt-1">{dateError}</div>}
+                  </div>
+                  <div className="mb-4 border border-blue-200 rounded-lg p-3 bg-blue-50">
+                    <div className="font-semibold text-blue-700 mb-2">Automate</div>
+                    <div className="mb-3">
+                      <label className="block text-gray-900 font-medium mb-1">Recurrence</label>
+                      <select
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                        value={recurrence}
+                        onChange={e => setRecurrence(e.target.value as 'once' | 'weekly')}
+                      >
+                        <option value="once">Once</option>
+                        <option value="weekly">Weekly</option>
+                      </select>
+                    </div>
+                    {recurrence === 'weekly' && (
+                      <div>
+                        <label className="block text-gray-900 font-medium mb-1">Day of Week</label>
+                        <select
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                          value={dayOfWeek}
+                          onChange={e => setDayOfWeek(Number(e.target.value))}
+                        >
+                          {daysOfWeek.map((d, i) => (
+                            <option key={i} value={i}>{d}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+              <button
+                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors mt-2 flex items-center justify-center"
+                onClick={handleSendCheckin}
+                disabled={saving || !!dateError || (sendType === 'schedule' && (!scheduleDate || (recurrence === 'weekly' && dayOfWeek === null)))}
+              >
+                {saving ? (
+                  <span className="flex items-center"><span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></span>Saving...</span>
+                ) : (
+                  <span className="text-white">{sendType === 'now' ? 'Send Now' : 'Save Schedule'}</span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Toast Notification */}
+        {toast.message && (
+          <div className={`fixed bottom-6 right-6 z-50 px-6 py-4 rounded-xl shadow-lg text-white font-semibold transition-all ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}
+            onAnimationEnd={() => setToast({ message: '', type: null })}
+          >
+            {toast.message}
+          </div>
+        )}
 
       </main>
     </div>

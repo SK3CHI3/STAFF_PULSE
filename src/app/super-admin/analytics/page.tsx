@@ -7,16 +7,14 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter
 } from 'recharts'
+import { DollarSign, TrendingUp, Users, ArrowDown } from 'lucide-react'
 
 interface AnalyticsData {
   userGrowth: any[]
   revenueData: any[]
   engagementMetrics: any[]
-  geographicData: any[]
-  industryBreakdown: any[]
   retentionData: any[]
   usagePatterns: any[]
-  conversionFunnel: any[]
 }
 
 export default function SuperAdminAnalytics() {
@@ -24,14 +22,11 @@ export default function SuperAdminAnalytics() {
     userGrowth: [],
     revenueData: [],
     engagementMetrics: [],
-    geographicData: [],
-    industryBreakdown: [],
     retentionData: [],
-    usagePatterns: [],
-    conversionFunnel: []
+    usagePatterns: []
   })
   
-  const [selectedTimeframe, setSelectedTimeframe] = useState('30d')
+  const [selectedTimeframe, setSelectedTimeframe] = useState('7d')
   const [selectedMetric, setSelectedMetric] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,21 +42,22 @@ export default function SuperAdminAnalytics() {
   const fetchAnalyticsData = async () => {
     try {
       setLoading(true)
-      
-      // Generate comprehensive analytics data
-      const data = {
-        userGrowth: generateUserGrowthData(),
-        revenueData: generateRevenueData(),
-        engagementMetrics: generateEngagementData(),
-        geographicData: generateGeographicData(),
-        industryBreakdown: generateIndustryData(),
-        retentionData: generateRetentionData(),
-        usagePatterns: generateUsagePatterns(),
-        conversionFunnel: generateConversionFunnel()
-      }
-      
-      setAnalyticsData(data)
-      
+      // Fetch real analytics data from Supabase
+      const [userGrowth, revenueData, engagementMetrics, retentionData, usagePatterns] = await Promise.all([
+        fetchUserGrowthData(),
+        fetchRevenueData(),
+        fetchEngagementMetrics(),
+        fetchRetentionData(),
+        fetchUsagePatterns()
+      ])
+      setAnalyticsData(data => ({
+        ...data,
+        userGrowth,
+        revenueData,
+        engagementMetrics,
+        retentionData,
+        usagePatterns
+      }))
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -69,103 +65,314 @@ export default function SuperAdminAnalytics() {
     }
   }
 
-  const generateUserGrowthData = () => {
-    const months = []
+  // Fetch user growth data (organizations, employees, active users)
+  const fetchUserGrowthData = async () => {
+    const now = new Date();
+    let labels: string[] = [];
+    let groupBy: 'day' | 'week' | 'month' = 'month';
+    let rangeStart = new Date(now);
+    if (selectedTimeframe === '7d') {
+      groupBy = 'day';
+      rangeStart.setDate(now.getDate() - 6);
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        labels.push(d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' }));
+      }
+    } else if (selectedTimeframe === '30d' || selectedTimeframe === '90d') {
+      groupBy = 'week';
+      const weeks = selectedTimeframe === '30d' ? 4 : 13;
+      rangeStart.setDate(now.getDate() - (weeks * 7 - 1));
+      for (let i = weeks - 1; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i * 7);
+        labels.push(start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+      }
+    } else if (selectedTimeframe === '1y') {
+      groupBy = 'month';
+      rangeStart.setMonth(now.getMonth() - 11);
     for (let i = 11; i >= 0; i--) {
-      const date = new Date()
-      date.setMonth(date.getMonth() - i)
-      months.push({
-        month: date.toLocaleDateString('en-US', { month: 'short' }),
-        organizations: Math.floor(Math.random() * 20) + 10 + (11 - i) * 5,
-        employees: Math.floor(Math.random() * 500) + 200 + (11 - i) * 100,
-        activeUsers: Math.floor(Math.random() * 100) + 50 + (11 - i) * 20
-      })
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        labels.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+      }
     }
-    return months
+    // Query organizations
+    const { data: orgs, error: orgsError } = await supabase
+      .from('organizations')
+      .select('id, created_at')
+      .gte('created_at', rangeStart.toISOString());
+    if (orgsError) throw orgsError;
+    // Query employees
+    const { data: emps, error: empsError } = await supabase
+      .from('employees')
+      .select('id, created_at')
+      .gte('created_at', rangeStart.toISOString());
+    if (empsError) throw empsError;
+    // Query active users (profiles updated in range)
+    const { data: profiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('id, updated_at')
+      .gte('updated_at', rangeStart.toISOString());
+    if (profilesError) throw profilesError;
+    // Group by label
+    const orgsByLabel = Object.fromEntries(labels.map(l => [l, 0]));
+    const empsByLabel = Object.fromEntries(labels.map(l => [l, 0]));
+    const activeByLabel = Object.fromEntries(labels.map(l => [l, 0]));
+    orgs?.forEach(org => {
+      const d = new Date(org.created_at);
+      let label = '';
+      if (groupBy === 'day') label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      else if (groupBy === 'week') label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      else label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      if (orgsByLabel[label] !== undefined) orgsByLabel[label]++;
+    });
+    emps?.forEach(emp => {
+      const d = new Date(emp.created_at);
+      let label = '';
+      if (groupBy === 'day') label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      else if (groupBy === 'week') label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      else label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      if (empsByLabel[label] !== undefined) empsByLabel[label]++;
+    });
+    profiles?.forEach(profile => {
+      const d = new Date(profile.updated_at);
+      let label = '';
+      if (groupBy === 'day') label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      else if (groupBy === 'week') label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      else label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      if (activeByLabel[label] !== undefined) activeByLabel[label]++;
+    });
+    return labels.map(label => ({
+      name: label,
+      organizations: orgsByLabel[label],
+      employees: empsByLabel[label],
+      activeUsers: activeByLabel[label]
+    }));
   }
 
-  const generateRevenueData = () => {
-    const months = []
+  // Fetch revenue data (sum of org revenue, MRR, churn placeholder)
+  const fetchRevenueData = async () => {
+    const now = new Date();
+    let labels: string[] = [];
+    let groupBy: 'day' | 'week' | 'month' = 'month';
+    let rangeStart = new Date(now);
+    if (selectedTimeframe === '7d') {
+      groupBy = 'day';
+      rangeStart.setDate(now.getDate() - 6);
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        labels.push(d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' }));
+      }
+    } else if (selectedTimeframe === '30d' || selectedTimeframe === '90d') {
+      groupBy = 'week';
+      const weeks = selectedTimeframe === '30d' ? 4 : 13;
+      rangeStart.setDate(now.getDate() - (weeks * 7 - 1));
+      for (let i = weeks - 1; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i * 7);
+        labels.push(start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+      }
+    } else if (selectedTimeframe === '1y') {
+      groupBy = 'month';
+      rangeStart.setMonth(now.getMonth() - 11);
     for (let i = 11; i >= 0; i--) {
-      const date = new Date()
-      date.setMonth(date.getMonth() - i)
-      const baseRevenue = 5000 + (11 - i) * 2000
-      months.push({
-        month: date.toLocaleDateString('en-US', { month: 'short' }),
-        revenue: baseRevenue + Math.floor(Math.random() * 3000),
-        mrr: baseRevenue * 0.8 + Math.floor(Math.random() * 2000),
-        churn: Math.random() * 5 + 2
-      })
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        labels.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+      }
     }
-    return months
+    // Query organizations for revenue
+    const { data: orgs, error: orgsError } = await supabase
+      .from('organizations')
+      .select('id, created_at, employee_count, subscription_plan')
+      .gte('created_at', rangeStart.toISOString());
+    if (orgsError) throw orgsError;
+    // Group by label
+    const revenueByLabel = Object.fromEntries(labels.map(l => [l, 0]));
+    orgs?.forEach(org => {
+      const d = new Date(org.created_at);
+      let label = '';
+      if (groupBy === 'day') label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      else if (groupBy === 'week') label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      else label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      // Example: revenue = employee_count * plan price (assume 500 for paid, 0 for free)
+      let planPrice = org.subscription_plan === 'paid' ? 500 : 0;
+      revenueByLabel[label] += (org.employee_count || 0) * planPrice;
+    });
+    return labels.map(label => ({
+      name: label,
+      revenue: revenueByLabel[label],
+      mrr: revenueByLabel[label], // Placeholder for MRR
+      churn: 0 // Placeholder for churn
+    }));
   }
 
-  const generateEngagementData = () => {
-    const days = []
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      days.push({
-        date: date.getDate(),
-        responseRate: 70 + Math.random() * 25,
-        avgMood: 3.2 + Math.random() * 1.5,
-        messagesPerUser: 2 + Math.random() * 3
-      })
+  // Fetch engagement metrics (response rate, avg mood, messages per user)
+  const fetchEngagementMetrics = async () => {
+    const now = new Date();
+    let labels: string[] = [];
+    let groupBy: 'day' | 'week' | 'month' = 'day';
+    let rangeStart = new Date(now);
+    if (selectedTimeframe === '7d') {
+      groupBy = 'day';
+      rangeStart.setDate(now.getDate() - 6);
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        labels.push(d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' }));
+      }
+    } else if (selectedTimeframe === '30d' || selectedTimeframe === '90d') {
+      groupBy = 'week';
+      const weeks = selectedTimeframe === '30d' ? 4 : 13;
+      rangeStart.setDate(now.getDate() - (weeks * 7 - 1));
+      for (let i = weeks - 1; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i * 7);
+        labels.push(start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+      }
+    } else if (selectedTimeframe === '1y') {
+      groupBy = 'month';
+      rangeStart.setMonth(now.getMonth() - 11);
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        labels.push(d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }));
+      }
     }
-    return days
+    // Query mood_checkins for response rate and mood
+    const { data: moods, error: moodsError } = await supabase
+      .from('mood_checkins')
+      .select('id, created_at, mood_score, employee_id')
+      .gte('created_at', rangeStart.toISOString());
+    if (moodsError) throw moodsError;
+    // Query employees for denominator
+    const { data: emps, error: empsError } = await supabase
+      .from('employees')
+      .select('id')
+    if (empsError) throw empsError;
+    // Query messages (if you have a messages table, otherwise skip)
+    // We'll estimate messages per user as responses for now
+    // Group by label
+    const byLabel = Object.fromEntries(labels.map(l => [l, { responses: 0, moodSum: 0, moodCount: 0 }]));
+    moods?.forEach(m => {
+      const d = new Date(m.created_at);
+      let label = '';
+      if (groupBy === 'day') label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      else if (groupBy === 'week') label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      else label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      if (byLabel[label]) {
+        byLabel[label].responses++;
+        if (m.mood_score) {
+          byLabel[label].moodSum += m.mood_score;
+          byLabel[label].moodCount++;
+        }
+      }
+    });
+    return labels.map(label => {
+      const totalEmployees = emps?.length || 1;
+      const responseRate = totalEmployees > 0 ? (byLabel[label].responses / totalEmployees) * 100 : 0;
+      const avgMood = byLabel[label].moodCount > 0 ? byLabel[label].moodSum / byLabel[label].moodCount : 0;
+      return {
+        date: label,
+        responseRate: Number(responseRate.toFixed(2)),
+        avgMood: Number(avgMood.toFixed(2)),
+        messagesPerUser: byLabel[label].responses // Placeholder
+      };
+    });
   }
 
-  const generateGeographicData = () => {
-    return [
-      { country: 'United States', organizations: 45, revenue: 125000, color: '#3B82F6' },
-      { country: 'United Kingdom', organizations: 23, revenue: 67000, color: '#10B981' },
-      { country: 'Canada', organizations: 18, revenue: 52000, color: '#F59E0B' },
-      { country: 'Australia', organizations: 12, revenue: 34000, color: '#EF4444' },
-      { country: 'Germany', organizations: 15, revenue: 41000, color: '#8B5CF6' },
-      { country: 'Others', organizations: 27, revenue: 73000, color: '#6B7280' }
-    ]
+  // Fetch retention data (cohort analysis, basic)
+  const fetchRetentionData = async () => {
+    // Cohort: for each month, what percent of users are still active after 1, 2, 3, 6, 12 months
+    // We'll use employees as the cohort base
+    const { data: emps, error: empsError } = await supabase
+      .from('employees')
+      .select('id, created_at, updated_at')
+    if (empsError) throw empsError;
+    // Group employees by signup month
+    const cohorts: Record<string, any[]> = {};
+    (emps as any[] | undefined)?.forEach(emp => {
+      const created = new Date(emp.created_at);
+      const cohort = created.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      if (!cohorts[cohort]) cohorts[cohort] = [];
+      cohorts[cohort].push(emp);
+    });
+    // For each cohort, calculate retention at 1, 2, 3, 6, 12 months
+    const now = new Date();
+    const retention = Object.entries(cohorts).map(([cohort, cohortEmps]) => {
+      const base = cohortEmps.length;
+      const months = [1, 2, 3, 6, 12];
+      const rates: Record<string, number> = {};
+      months.forEach(m => {
+        const retained = (cohortEmps as any[]).filter(emp => {
+          if (!emp.updated_at) return false;
+          const lastActive = new Date(emp.updated_at);
+          const created = new Date(emp.created_at);
+          return (lastActive.getTime() - created.getTime()) / (1000 * 60 * 60 * 24 * 30) >= m;
+        }).length;
+        rates[`month${m}`] = base > 0 ? Math.round((retained / base) * 100) : 0;
+      });
+      return {
+        cohort,
+        month1: 100,
+        month2: rates['month2'],
+        month3: rates['month3'],
+        month6: rates['month6'],
+        month12: rates['month12']
+      };
+    });
+    return retention;
   }
 
-  const generateIndustryData = () => {
-    return [
-      { industry: 'Technology', count: 35, avgMood: 4.1, color: '#3B82F6' },
-      { industry: 'Healthcare', count: 28, avgMood: 3.8, color: '#10B981' },
-      { industry: 'Finance', count: 22, avgMood: 3.6, color: '#F59E0B' },
-      { industry: 'Education', count: 18, avgMood: 4.0, color: '#8B5CF6' },
-      { industry: 'Retail', count: 15, avgMood: 3.4, color: '#EF4444' },
-      { industry: 'Manufacturing', count: 12, avgMood: 3.7, color: '#6B7280' }
-    ]
+  // Fetch usage patterns (activity by hour)
+  const fetchUsagePatterns = async () => {
+    // Group mood_checkins by hour of day for the selected timeframe
+    const now = new Date();
+    let rangeStart = new Date(now);
+    if (selectedTimeframe === '7d') rangeStart.setDate(now.getDate() - 6);
+    else if (selectedTimeframe === '30d') rangeStart.setDate(now.getDate() - 29);
+    else if (selectedTimeframe === '90d') rangeStart.setDate(now.getDate() - 89);
+    else if (selectedTimeframe === '1y') rangeStart.setMonth(now.getMonth() - 11);
+    const { data: moods, error } = await supabase
+      .from('mood_checkins')
+      .select('id, created_at')
+      .gte('created_at', rangeStart.toISOString());
+    if (error) throw error;
+    // Group by hour
+    const byHour = Array.from({ length: 24 }, (_, i) => ({ hour: i, messages: 0, responses: 0 }));
+    moods?.forEach(m => {
+      const d = new Date(m.created_at);
+      const hour = d.getHours();
+      byHour[hour].messages++;
+      byHour[hour].responses++;
+    });
+    return byHour;
   }
 
-  const generateRetentionData = () => {
-    return [
-      { cohort: 'Jan 2024', month1: 100, month2: 85, month3: 78, month6: 65, month12: 58 },
-      { cohort: 'Feb 2024', month1: 100, month2: 88, month3: 82, month6: 70, month12: 62 },
-      { cohort: 'Mar 2024', month1: 100, month2: 90, month3: 85, month6: 75, month12: 68 },
-      { cohort: 'Apr 2024', month1: 100, month2: 87, month3: 80, month6: 72, month12: 65 }
-    ]
+  // Helper to get week number of year
+  function getWeekNumber(date: Date) {
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+    const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
   }
 
-  const generateUsagePatterns = () => {
-    const hours = []
-    for (let i = 0; i < 24; i++) {
-      hours.push({
-        hour: i,
-        messages: Math.floor(Math.random() * 100) + (i >= 9 && i <= 17 ? 150 : 50),
-        responses: Math.floor(Math.random() * 80) + (i >= 9 && i <= 17 ? 120 : 30)
-      })
-    }
-    return hours
-  }
-
-  const generateConversionFunnel = () => {
-    return [
-      { stage: 'Visitors', count: 10000, percentage: 100 },
-      { stage: 'Sign-ups', count: 1200, percentage: 12 },
-      { stage: 'Trial Started', count: 800, percentage: 8 },
-      { stage: 'Active Users', count: 600, percentage: 6 },
-      { stage: 'Paid Conversion', count: 180, percentage: 1.8 }
-    ]
+  // Custom XAxis tick renderer for better label spacing and formatting
+  function CustomXAxisTick({ x, y, payload }: { x: number; y: number; payload: { value: string } }) {
+    const label = payload.value;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          x={0}
+          y={0}
+          dy={16}
+          textAnchor="end"
+          fill="#6B7280"
+          fontSize={12}
+          transform="rotate(-35)"
+        >
+          {label.length > 12 ? label.slice(0, 12) + '…' : label}
+        </text>
+      </g>
+    );
   }
 
   if (!profile || profile.role !== 'super_admin') {
@@ -199,55 +406,37 @@ export default function SuperAdminAnalytics() {
       <header className="backdrop-blur-md bg-white/30 border-b border-white/20 sticky top-0 z-50">
         <div className="px-6 py-4 flex items-center">
           <img src="/logo.svg" alt="StaffPulse Logo" className="w-8 h-8 rounded-lg bg-white p-0.5 shadow mr-4" />
-          <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Platform Analytics
-            </h1>
-            <p className="text-gray-600 mt-1">Comprehensive insights and business intelligence</p>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            <select 
-              value={selectedTimeframe}
-              onChange={(e) => setSelectedTimeframe(e.target.value)}
-              className="backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
-            >
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-              <option value="90d">Last 90 days</option>
-              <option value="1y">Last year</option>
-            </select>
+            <div>
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                Platform Analytics
+              </h1>
+              <p className="text-gray-600 mt-1">Comprehensive insights and business intelligence</p>
+            </div>
             
-            <button 
-              onClick={fetchAnalyticsData}
-              className="backdrop-blur-md bg-blue-500/20 hover:bg-blue-500/30 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl transition-all duration-200 flex items-center space-x-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span>Refresh</span>
-            </button>
+            <div className="flex items-center space-x-4">
+              <select 
+                value={selectedTimeframe}
+                onChange={(e) => setSelectedTimeframe(e.target.value)}
+                className="bg-white/70 border border-gray-300 rounded-xl px-4 py-2 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="90d">Last 90 days</option>
+                <option value="1y">Last year</option>
+              </select>
+              
+              <button 
+                onClick={fetchAnalyticsData}
+                className="backdrop-blur-md bg-blue-500/20 hover:bg-blue-500/30 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl transition-all duration-200 flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span>Refresh</span>
+              </button>
           </div>
         </div>
       </header>
-
-      {/* Navigation */}
-      <div className="px-6 pt-6">
-        <div className="flex space-x-1 mb-6">
-          <a href="/super-admin" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            Overview
-          </a>
-          <a href="/super-admin/organizations" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            Organizations
-          </a>
-          <button className="backdrop-blur-md bg-blue-500/20 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl font-medium">
-            Analytics
-          </button>
-          <a href="/super-admin/system" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            System Health
-          </a>
-        </div>
-      </div>
 
       {/* Content */}
       <main className="px-6 pb-6 space-y-6">
@@ -261,31 +450,31 @@ export default function SuperAdminAnalytics() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <KPICard
             title="Total Revenue"
-            value="$847,230"
+            value={`Ksh ${analyticsData.revenueData[analyticsData.revenueData.length-1]?.revenue?.toLocaleString() || '0'}`}
             change="+23.5%"
             trend="up"
-            icon="💰"
+            icon={<DollarSign className="w-6 h-6 text-green-600" />}
           />
           <KPICard
             title="Monthly Recurring Revenue"
-            value="$67,890"
+            value={`Ksh ${analyticsData.revenueData[analyticsData.revenueData.length-1]?.mrr?.toLocaleString() || '0'}`}
             change="+18.2%"
             trend="up"
-            icon="📈"
+            icon={<TrendingUp className="w-6 h-6 text-green-600" />}
           />
           <KPICard
             title="Customer Lifetime Value"
-            value="$12,450"
+            value={`Ksh ${analyticsData.revenueData[analyticsData.revenueData.length-1]?.churn?.toLocaleString() || '0'}`}
             change="+12.1%"
             trend="up"
-            icon="👥"
+            icon={<Users className="w-6 h-6 text-green-600" />}
           />
           <KPICard
             title="Churn Rate"
-            value="3.2%"
+            value={`${analyticsData.revenueData[analyticsData.revenueData.length-1]?.churn?.toFixed(1) || '0'}%`}
             change="-0.8%"
             trend="down"
-            icon="📉"
+            icon={<ArrowDown className="w-6 h-6 text-red-600" />}
           />
         </div>
 
@@ -306,7 +495,7 @@ export default function SuperAdminAnalytics() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="month" stroke="#6B7280" />
+                <XAxis dataKey="name" stroke="#6B7280" tick={props => <CustomXAxisTick {...props} />} />
                 <YAxis stroke="#6B7280" />
                 <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
                 <Area type="monotone" dataKey="organizations" stroke="#3B82F6" fillOpacity={1} fill="url(#colorOrgs)" />
@@ -320,58 +509,12 @@ export default function SuperAdminAnalytics() {
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={analyticsData.revenueData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="month" stroke="#6B7280" />
+                <XAxis dataKey="name" stroke="#6B7280" tick={props => <CustomXAxisTick {...props} />} />
                 <YAxis stroke="#6B7280" />
                 <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
                 <Line type="monotone" dataKey="revenue" stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6' }} />
                 <Line type="monotone" dataKey="mrr" stroke="#F59E0B" strokeWidth={3} dot={{ fill: '#F59E0B' }} />
               </LineChart>
-            </ResponsiveContainer>
-          </ChartCard>
-        </div>
-
-        {/* Geographic and Industry Analysis */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Geographic Distribution */}
-          <ChartCard title="Geographic Distribution" subtitle="Organizations by country">
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={analyticsData.geographicData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="organizations"
-                >
-                  {analyticsData.geographicData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              {analyticsData.geographicData.map((item, index) => (
-                <div key={index} className="flex items-center space-x-2 text-sm">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-gray-600">{item.country}</span>
-                </div>
-              ))}
-            </div>
-          </ChartCard>
-
-          {/* Industry Breakdown */}
-          <ChartCard title="Industry Analysis" subtitle="Organizations by industry with mood scores">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analyticsData.industryBreakdown}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="industry" stroke="#6B7280" angle={-45} textAnchor="end" height={80} />
-                <YAxis stroke="#6B7280" />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
-                <Bar dataKey="count" fill="#3B82F6" radius={[4, 4, 0, 0]} />
-              </BarChart>
             </ResponsiveContainer>
           </ChartCard>
         </div>
@@ -383,8 +526,8 @@ export default function SuperAdminAnalytics() {
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={analyticsData.engagementMetrics}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="date" stroke="#6B7280" />
-                <YAxis stroke="#6B7280" />
+                <XAxis dataKey="date" stroke="#6B7280" tick={props => <CustomXAxisTick {...props} />} />
+                <YAxis stroke="#6B7280" domain={[0, 'auto']} />
                 <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
                 <Line type="monotone" dataKey="responseRate" stroke="#10B981" strokeWidth={2} />
                 <Line type="monotone" dataKey="avgMood" stroke="#8B5CF6" strokeWidth={2} />
@@ -398,34 +541,13 @@ export default function SuperAdminAnalytics() {
               <AreaChart data={analyticsData.usagePatterns}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="hour" stroke="#6B7280" />
-                <YAxis stroke="#6B7280" />
+                <YAxis stroke="#6B7280" domain={[0, 'auto']} />
                 <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
                 <Area type="monotone" dataKey="messages" stackId="1" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.6} />
                 <Area type="monotone" dataKey="responses" stackId="1" stroke="#10B981" fill="#10B981" fillOpacity={0.6} />
               </AreaChart>
             </ResponsiveContainer>
           </ChartCard>
-        </div>
-
-        {/* Conversion Funnel */}
-        <div className="backdrop-blur-md bg-white/40 border border-white/20 rounded-2xl p-6 shadow-lg">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Conversion Funnel</h3>
-          <div className="space-y-4">
-            {analyticsData.conversionFunnel.map((stage, index) => (
-              <div key={index} className="flex items-center space-x-4">
-                <div className="w-24 text-sm font-medium text-gray-700">{stage.stage}</div>
-                <div className="flex-1 bg-gray-200 rounded-full h-8 relative overflow-hidden">
-                  <div 
-                    className="bg-gradient-to-r from-blue-500 to-purple-600 h-full rounded-full transition-all duration-1000"
-                    style={{ width: `${stage.percentage}%` }}
-                  ></div>
-                  <div className="absolute inset-0 flex items-center justify-center text-sm font-medium text-white">
-                    {stage.count.toLocaleString()} ({stage.percentage}%)
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </main>
     </div>
@@ -438,7 +560,7 @@ function KPICard({ title, value, change, trend, icon }: {
   value: string
   change: string
   trend: 'up' | 'down'
-  icon: string
+  icon: React.ReactNode
 }) {
   return (
     <div className="backdrop-blur-md bg-white/40 border border-white/20 rounded-2xl p-6 shadow-lg">

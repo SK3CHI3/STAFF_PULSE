@@ -1,4 +1,5 @@
-import { createSupabaseClient } from './supabase'
+import { supabase } from './supabase'
+import { createSupabaseAdmin } from './supabase'
 import { AuthError, User } from '@supabase/supabase-js'
 import { useState, useEffect } from 'react'
 
@@ -21,12 +22,10 @@ export interface AuthResponse {
   error: AuthError | null
 }
 
-// Sign up new user and create organization
+// Sign up new user (client-side, public client only)
 export async function signUp(data: SignUpData): Promise<AuthResponse> {
-  const supabase = createSupabaseClient()
-
   try {
-    // 1. Create user account
+    // 1. Create user account (public client)
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
@@ -52,46 +51,7 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
       }
     }
 
-    // 2. Wait a moment for the user to be properly authenticated
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // 3. Create organization
-    const { data: orgData, error: orgError } = await supabase
-      .from('organizations')
-      .insert({
-        name: data.companyName,
-        email: data.email,
-        employee_count: parseInt(data.teamSize.split('-')[0]) || 1,
-        subscription_plan: 'free'
-      })
-      .select()
-      .single()
-
-    if (orgError) {
-      console.error('Failed to create organization:', orgError)
-      // Continue anyway, organization can be created later
-    }
-
-    // 4. Upsert user profile with organization ID and correct info
-    if (orgData) {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert([
-          {
-            id: authData.user.id,
-            organization_id: orgData.id,
-            first_name: data.firstName,
-            last_name: data.lastName,
-            email: data.email,
-            role: 'hr_admin'
-          }
-        ], { onConflict: 'id' })
-
-      if (profileError) {
-        console.error('Failed to upsert profile:', profileError)
-      }
-    }
-
+    // Only return the user; org/profile creation is handled by the API route
     return { user: authData.user, error: null }
 
   } catch (error) {
@@ -105,8 +65,6 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
 
 // Sign in existing user
 export async function signIn(data: SignInData): Promise<AuthResponse> {
-  const supabase = createSupabaseClient()
-
   try {
     const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
@@ -137,8 +95,6 @@ export async function signIn(data: SignInData): Promise<AuthResponse> {
 
 // Sign out user
 export async function signOut(): Promise<{ error: AuthError | null }> {
-  const supabase = createSupabaseClient()
-
   try {
     const { error } = await supabase.auth.signOut()
     return { error }
@@ -151,8 +107,6 @@ export async function signOut(): Promise<{ error: AuthError | null }> {
 
 // Reset password
 export async function resetPassword(email: string): Promise<{ error: AuthError | null }> {
-  const supabase = createSupabaseClient()
-
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/reset-password`
@@ -167,8 +121,6 @@ export async function resetPassword(email: string): Promise<{ error: AuthError |
 
 // Get current user
 export async function getCurrentUser(): Promise<{ user: User | null, error: AuthError | null }> {
-  const supabase = createSupabaseClient()
-
   try {
     const { data: { user }, error } = await supabase.auth.getUser()
     return { user, error }
@@ -182,7 +134,6 @@ export async function getCurrentUser(): Promise<{ user: User | null, error: Auth
 
 // Get user profile with organization
 export async function getUserProfile(userId: string) {
-  const supabase = createSupabaseClient()
   const start = performance.now();
   try {
     const { data, error } = await supabase
@@ -203,8 +154,6 @@ export async function getUserProfile(userId: string) {
 
 // Social login with Google
 export async function signInWithGoogle(): Promise<AuthResponse> {
-  const supabase = createSupabaseClient()
-
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -230,8 +179,6 @@ export async function signInWithGoogle(): Promise<AuthResponse> {
 
 // Social login with Facebook
 export async function signInWithFacebook(): Promise<AuthResponse> {
-  const supabase = createSupabaseClient()
-
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'facebook',
@@ -257,8 +204,6 @@ export async function signInWithFacebook(): Promise<AuthResponse> {
 
 // Check if user has completed onboarding
 export async function checkOnboardingStatus(userId: string) {
-  const supabase = createSupabaseClient()
-
   try {
     const { data, error } = await supabase
       .from('profiles')
@@ -286,7 +231,6 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const supabase = createSupabaseClient()
 
   useEffect(() => {
     // Get initial session

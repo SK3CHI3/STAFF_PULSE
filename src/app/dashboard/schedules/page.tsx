@@ -441,7 +441,7 @@ export default function SchedulesPage() {
   )
 }
 
-// Schedule Modal Component (placeholder for now)
+// Schedule Modal Component
 function ScheduleModal({ 
   schedule, 
   departments, 
@@ -455,24 +455,106 @@ function ScheduleModal({
   onSuccess: () => void
   organizationId?: string
 }) {
+  const [name, setName] = useState(schedule?.name || '');
+  const [frequency, setFrequency] = useState<Schedule['frequency']>(schedule?.frequency || 'weekly');
+  const [dayOfWeek, setDayOfWeek] = useState<number>(schedule?.day_of_week ?? 1);
+  const [timeOfDay, setTimeOfDay] = useState(schedule?.time_of_day || '09:00');
+  const [timezone, setTimezone] = useState(schedule?.timezone || 'Africa/Nairobi');
+  const [messageTemplate, setMessageTemplate] = useState(schedule?.message_template || '');
+  const [targetDepartments, setTargetDepartments] = useState<string[]>(schedule?.target_departments || []);
+  const [isActive, setIsActive] = useState(schedule?.is_active ?? true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const validFrequencies = ['daily', 'weekly', 'bi-weekly', 'monthly'];
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const method = schedule ? 'PUT' : 'POST';
+      const body: any = {
+        organizationId,
+        name,
+        frequency,
+        day_of_week: (frequency === 'weekly' || frequency === 'bi-weekly') ? dayOfWeek : undefined,
+        time_of_day: timeOfDay,
+        timezone,
+        message_template: messageTemplate,
+        target_departments: targetDepartments,
+        is_active: isActive,
+      };
+      if (schedule) body.scheduleId = schedule.id;
+      const res = await fetch('/api/schedules', {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to save schedule');
+      onSuccess();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md">
         <h2 className="text-lg font-semibold mb-4">
           {schedule ? 'Edit Schedule' : 'Create Schedule'}
         </h2>
-        <p className="text-gray-600 mb-4">
-          Schedule creation form will be implemented in the next iteration.
-        </p>
-        <div className="flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-          >
-            Close
-          </button>
+        {error && <div className="mb-3 p-2 bg-red-100 text-red-700 rounded">{error}</div>}
+        <div className="space-y-4">
+          <div>
+            <label className="block font-medium mb-1">Schedule Name</label>
+            <input type="text" className="w-full border rounded px-3 py-2" value={name} onChange={e => setName(e.target.value)} />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Frequency</label>
+            <select className="w-full border rounded px-3 py-2" value={frequency} onChange={e => setFrequency(e.target.value as Schedule['frequency'])}>
+              {validFrequencies.map(f => <option key={f} value={f}>{f.charAt(0).toUpperCase() + f.slice(1)}</option>)}
+            </select>
+          </div>
+          {(frequency === 'weekly' || frequency === 'bi-weekly') && (
+            <div>
+              <label className="block font-medium mb-1">Day of Week</label>
+              <select className="w-full border rounded px-3 py-2" value={dayOfWeek} onChange={e => setDayOfWeek(Number(e.target.value))}>
+                {daysOfWeek.map((d, i) => <option key={i} value={i}>{d}</option>)}
+              </select>
+            </div>
+          )}
+          <div>
+            <label className="block font-medium mb-1">Time of Day</label>
+            <input type="time" className="w-full border rounded px-3 py-2" value={timeOfDay} onChange={e => setTimeOfDay(e.target.value)} />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Timezone</label>
+            <input type="text" className="w-full border rounded px-3 py-2" value={timezone} onChange={e => setTimezone(e.target.value)} />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Target Departments</label>
+            <select multiple className="w-full border rounded px-3 py-2" value={targetDepartments} onChange={e => setTargetDepartments(Array.from(e.target.selectedOptions, o => o.value))}>
+              {departments.map(d => <option key={d.name} value={d.name}>{d.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Message Template</label>
+            <textarea className="w-full border rounded px-3 py-2" rows={4} value={messageTemplate} onChange={e => setMessageTemplate(e.target.value)} placeholder="Enter the WhatsApp message template for this schedule..." />
+          </div>
+          <div className="flex items-center space-x-2">
+            <input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} id="active" />
+            <label htmlFor="active" className="font-medium">Active</label>
+          </div>
+        </div>
+        <div className="flex justify-end mt-6 space-x-2">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Cancel</button>
+          <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700" disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
         </div>
       </div>
     </div>
-  )
+  );
 }

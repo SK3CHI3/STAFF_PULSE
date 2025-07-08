@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
+import { Building2, Users, Mail, Phone, MapPin, Edit, Trash2, Plus, RefreshCw, CheckCircle2, XCircle, ArrowDown, ArrowUp } from 'lucide-react'
 
 interface Organization {
   id: string
@@ -50,8 +51,7 @@ export default function OrganizationsManagement() {
         .select(`
           *,
           employees(count),
-          mood_checkins(count),
-          profiles(last_sign_in_at)
+          mood_checkins(count)
         `)
         .order('created_at', { ascending: false })
 
@@ -61,7 +61,7 @@ export default function OrganizationsManagement() {
         ...org,
         employees_count: org.employees?.[0]?.count || 0,
         responses_count: org.mood_checkins?.[0]?.count || 0,
-        last_activity: org.profiles?.[0]?.last_sign_in_at || org.updated_at
+        last_activity: org.updated_at
       })) || []
 
       setOrganizations(processedOrgs)
@@ -165,9 +165,7 @@ export default function OrganizationsManagement() {
                 onClick={() => setShowCreateModal(true)}
                 className="backdrop-blur-md bg-blue-500/20 hover:bg-blue-500/30 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl transition-all duration-200 flex items-center space-x-2"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
+                <Plus className="w-4 h-4" />
                 <span>Add Organization</span>
               </button>
               
@@ -176,9 +174,7 @@ export default function OrganizationsManagement() {
                 className="backdrop-blur-md bg-gray-500/20 hover:bg-gray-500/30 border border-gray-300/30 text-gray-700 px-3 py-2 rounded-xl transition-all duration-200"
                 title="Refresh"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
+                <RefreshCw className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -202,7 +198,7 @@ export default function OrganizationsManagement() {
                 placeholder="Search organizations..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full bg-white/70 border border-gray-300 rounded-xl px-4 py-2 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             
@@ -210,7 +206,7 @@ export default function OrganizationsManagement() {
               <select 
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                className="bg-white/70 border border-gray-300 rounded-xl px-4 py-2 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
@@ -227,25 +223,25 @@ export default function OrganizationsManagement() {
           <StatCard
             title="Total Organizations"
             value={organizations.length}
-            icon="🏢"
+            icon={<Building2 className="w-8 h-8 text-blue-600" />}
             color="blue"
           />
           <StatCard
             title="Active"
             value={organizations.filter(o => o.subscription_status === 'active').length}
-            icon="✅"
+            icon={<CheckCircle2 className="w-8 h-8 text-green-600" />}
             color="green"
           />
           <StatCard
             title="Trial"
             value={organizations.filter(o => o.subscription_status === 'trial').length}
-            icon="🔄"
+            icon={<ArrowUp className="w-8 h-8 text-yellow-600" />}
             color="yellow"
           />
           <StatCard
             title="Inactive"
             value={organizations.filter(o => o.subscription_status === 'inactive').length}
-            icon="⏸️"
+            icon={<XCircle className="w-8 h-8 text-red-600" />}
             color="red"
           />
         </div>
@@ -322,10 +318,7 @@ export default function OrganizationsManagement() {
                             className="text-blue-600 hover:text-blue-800 p-1 rounded"
                             title="View/Edit Organization"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
+                            <Edit className="w-4 h-4" />
                           </button>
 
                           <button
@@ -333,9 +326,7 @@ export default function OrganizationsManagement() {
                             className="text-green-600 hover:text-green-800 p-1 rounded"
                             title="View Organization Dashboard"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
+                            <ArrowUp className="w-4 h-4" />
                           </button>
 
                           <button
@@ -347,13 +338,7 @@ export default function OrganizationsManagement() {
                             }`}
                             title={org.subscription_status === 'active' ? 'Suspend Organization' : 'Activate Organization'}
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              {org.subscription_status === 'active' ? (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              ) : (
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1m4 0h1m-6 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                              )}
-                            </svg>
+                            <ArrowDown className="w-4 h-4" />
                           </button>
                         </div>
                       </td>
@@ -389,7 +374,7 @@ export default function OrganizationsManagement() {
 function StatCard({ title, value, icon, color }: {
   title: string
   value: number
-  icon: string
+  icon: React.ReactNode
   color: 'blue' | 'green' | 'yellow' | 'red'
 }) {
   const colorClasses = {

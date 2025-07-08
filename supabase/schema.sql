@@ -181,6 +181,19 @@ CREATE TABLE employee_teams (
     PRIMARY KEY (employee_id, team_id)
 );
 
+-- Scheduled check-ins table
+CREATE TABLE IF NOT EXISTS scheduled_checkins (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE NOT NULL,
+    department VARCHAR(100), -- nullable, if null means all departments
+    scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
+    created_by UUID REFERENCES profiles(id),
+    message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    sent_at TIMESTAMP WITH TIME ZONE
+);
+
 -- Create indexes for better performance
 CREATE INDEX idx_organizations_email ON organizations(email);
 CREATE INDEX idx_profiles_organization_id ON profiles(organization_id);

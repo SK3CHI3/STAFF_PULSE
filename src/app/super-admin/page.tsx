@@ -7,6 +7,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts'
+import { Building2, Users, MessageSquare, ActivitySquare, BarChart2, TrendingUp, DollarSign, ArrowDown } from 'lucide-react'
+import React from 'react'
 
 interface PlatformStats {
   totalOrganizations: number
@@ -61,7 +63,7 @@ export default function SuperAdminDashboard() {
   const [topOrganizations, setTopOrganizations] = useState<ChartData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedTimeframe, setSelectedTimeframe] = useState('30d')
+  const [selectedTimeframe, setSelectedTimeframe] = useState('7d')
   
   const { user, profile } = useAuth()
 
@@ -196,48 +198,211 @@ export default function SuperAdminDashboard() {
   }
 
   const fetchMonthlyTrends = async () => {
-    // Generate last 6 months of data
-    const months = []
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date()
-      date.setMonth(date.getMonth() - i)
-      const orgCount = Math.floor(Math.random() * 10) + organizations.length - 5 + i
-      months.push({
-        name: date.toLocaleDateString('en-US', { month: 'short' }),
-        value: orgCount,
-        organizations: orgCount,
-        responses: Math.floor(Math.random() * 500) + 1000 + (i * 200),
-        revenue: Math.floor(Math.random() * 5000) + 10000 + (i * 1000)
-      })
+    const now = new Date();
+    let labels: string[] = [];
+    let orgsByLabel: Record<string, number> = {};
+    let responsesByLabel: Record<string, number> = {};
+    let groupBy: 'day' | 'week' | 'month' = 'month';
+    let rangeStart = new Date(now);
+
+    if (selectedTimeframe === '7d') {
+      groupBy = 'day';
+      rangeStart.setDate(now.getDate() - 6);
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+        labels.push(label);
+        orgsByLabel[label] = 0;
+        responsesByLabel[label] = 0;
+      }
+    } else if (selectedTimeframe === '30d' || selectedTimeframe === '90d') {
+      groupBy = 'week';
+      const weeks = selectedTimeframe === '30d' ? 4 : 13;
+      rangeStart.setDate(now.getDate() - (weeks * 7 - 1));
+      for (let i = weeks - 1; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i * 7);
+        const label = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        labels.push(label);
+        orgsByLabel[label] = 0;
+        responsesByLabel[label] = 0;
+      }
+    } else if (selectedTimeframe === '1y') {
+      groupBy = 'month';
+      rangeStart.setMonth(now.getMonth() - 11);
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        labels.push(label);
+        orgsByLabel[label] = 0;
+        responsesByLabel[label] = 0;
+      }
     }
-    setMonthlyData(months)
+
+    // Query organizations created in range
+    const { data: orgsData, error: orgsError } = await supabase
+      .from('organizations')
+      .select('id, created_at')
+      .gte('created_at', rangeStart.toISOString());
+    if (orgsError) throw orgsError;
+
+    // Query responses in range
+    const { data: responsesData, error: responsesError } = await supabase
+      .from('mood_checkins')
+      .select('id, created_at')
+      .gte('created_at', rangeStart.toISOString());
+    if (responsesError) throw responsesError;
+
+    // Group by label (using the same label format as above)
+    orgsData?.forEach(org => {
+      const d = new Date(org.created_at);
+      let label = '';
+      if (groupBy === 'day') {
+        label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      } else if (groupBy === 'week') {
+        label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } else {
+        label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      }
+      if (orgsByLabel[label] !== undefined) orgsByLabel[label]++;
+    });
+    responsesData?.forEach(resp => {
+      const d = new Date(resp.created_at);
+      let label = '';
+      if (groupBy === 'day') {
+        label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      } else if (groupBy === 'week') {
+        label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } else {
+        label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      }
+      if (responsesByLabel[label] !== undefined) responsesByLabel[label]++;
+    });
+    const monthly = labels.map(label => ({
+      name: label,
+      organizations: orgsByLabel[label],
+      responses: responsesByLabel[label],
+      value: orgsByLabel[label]
+    }));
+    setMonthlyData(monthly);
+  }
+
+  // Helper to get week number of year
+  function getWeekNumber(date: Date) {
+    const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
+    const pastDaysOfYear = (date.getTime() - firstDayOfYear.getTime()) / 86400000;
+    return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
   }
 
   const fetchMoodTrends = async () => {
-    // Generate last 30 days of mood trends
-    const days = []
-    for (let i = 29; i >= 0; i--) {
-      const date = new Date()
-      date.setDate(date.getDate() - i)
-      const moodValue = Number((3.5 + Math.random() * 1.5).toFixed(1))
-      days.push({
-        name: date.getDate().toString(),
-        value: moodValue,
-        mood: moodValue,
-        responses: Math.floor(Math.random() * 100) + 50
-      })
+    const now = new Date();
+    let labels: string[] = [];
+    let moodByLabel: Record<string, { sum: number, count: number, responses: number }> = {};
+    let groupBy: 'day' | 'week' | 'month' = 'day';
+    let rangeStart = new Date(now);
+
+    if (selectedTimeframe === '7d') {
+      groupBy = 'day';
+      rangeStart.setDate(now.getDate() - 6);
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+        labels.push(label);
+        moodByLabel[label] = { sum: 0, count: 0, responses: 0 };
+      }
+    } else if (selectedTimeframe === '30d' || selectedTimeframe === '90d') {
+      groupBy = 'week';
+      const weeks = selectedTimeframe === '30d' ? 4 : 13;
+      rangeStart.setDate(now.getDate() - (weeks * 7 - 1));
+      for (let i = weeks - 1; i >= 0; i--) {
+        const start = new Date(now);
+        start.setDate(now.getDate() - i * 7);
+        const label = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        labels.push(label);
+        moodByLabel[label] = { sum: 0, count: 0, responses: 0 };
+      }
+    } else if (selectedTimeframe === '1y') {
+      groupBy = 'month';
+      rangeStart.setMonth(now.getMonth() - 11);
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        labels.push(label);
+        moodByLabel[label] = { sum: 0, count: 0, responses: 0 };
+      }
     }
-    setMoodTrends(days)
+
+    // Query mood_checkins in range
+    const { data: moods, error } = await supabase
+      .from('mood_checkins')
+      .select('mood_score, created_at')
+      .gte('created_at', rangeStart.toISOString());
+    if (error) throw error;
+
+    // Group by label
+    moods?.forEach(m => {
+      const d = new Date(m.created_at);
+      let label = '';
+      if (groupBy === 'day') {
+        label = d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', year: 'numeric', month: 'short' });
+      } else if (groupBy === 'week') {
+        label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } else {
+        label = d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      }
+      if (moodByLabel[label]) {
+        moodByLabel[label].sum += m.mood_score || 0;
+        moodByLabel[label].count++;
+        moodByLabel[label].responses++;
+      }
+    });
+    const moodTrends = labels.map(label => {
+      const date = new Date(label);
+      let displayLabel = '';
+      if (groupBy === 'day') {
+        displayLabel = date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+      } else if (groupBy === 'week') {
+        displayLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      } else {
+        displayLabel = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      }
+      const moodValue = moodByLabel[label].count ? Number((moodByLabel[label].sum / moodByLabel[label].count).toFixed(2)) : undefined;
+      const base = {
+        name: displayLabel,
+        responses: moodByLabel[label].responses,
+        value: moodValue ?? 0
+      };
+      return moodValue !== undefined ? { ...base, mood: moodValue } : base;
+    });
+    setMoodTrends(moodTrends);
   }
 
   const fetchSubscriptionBreakdown = async () => {
-    const subscriptions = [
-      { name: 'Enterprise', value: 45, color: '#3B82F6' },
-      { name: 'Professional', value: 35, color: '#10B981' },
-      { name: 'Starter', value: 15, color: '#F59E0B' },
-      { name: 'Trial', value: 5, color: '#EF4444' }
-    ]
-    setSubscriptionData(subscriptions)
+    // Query organizations and group by subscription_status
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('subscription_status')
+    if (error) throw error
+    const counts: Record<string, number> = {}
+    data?.forEach(org => {
+      const status = org.subscription_status || 'trial'
+      counts[status] = (counts[status] || 0) + 1
+    })
+    const colorMap: Record<string, string> = {
+      active: '#3B82F6',
+      professional: '#10B981',
+      trial: '#F59E0B',
+      inactive: '#EF4444',
+      suspended: '#8B5CF6'
+    }
+    const breakdown = Object.entries(counts).map(([name, value]) => ({
+      name,
+      value,
+      color: colorMap[name] || '#6B7280'
+    }))
+    setSubscriptionData(breakdown)
   }
 
   const fetchTopOrganizations = async () => {
@@ -266,11 +431,17 @@ export default function SuperAdminDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading platform data...</p>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-6 text-center">
+        <h2 className="text-xl font-bold mb-2">Error loading dashboard</h2>
+        <p>{error}</p>
       </div>
     )
   }
@@ -278,104 +449,57 @@ export default function SuperAdminDashboard() {
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Glass Morphism Header */}
-      <header className="backdrop-blur-md bg-white/30 border-b border-white/20 sticky top-0 z-50">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between">
+    <div className="space-y-10">
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 flex items-center space-x-4 border border-gray-100">
+          <Building2 className="w-8 h-8 text-blue-600" />
+          <div>
+            <div className="text-2xl font-bold text-gray-900">{stats.totalOrganizations}</div>
+            <div className="text-gray-600 text-sm">Organizations</div>
+          </div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 flex items-center space-x-4 border border-gray-100">
+          <Users className="w-8 h-8 text-purple-600" />
+          <div>
+            <div className="text-2xl font-bold text-gray-900">{stats.totalEmployees}</div>
+            <div className="text-gray-600 text-sm">Employees</div>
+          </div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 flex items-center space-x-4 border border-gray-100">
+          <MessageSquare className="w-8 h-8 text-green-600" />
+          <div>
+            <div className="text-2xl font-bold text-gray-900">{stats.totalResponses}</div>
+            <div className="text-gray-600 text-sm">Responses</div>
+          </div>
+        </div>
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 flex items-center space-x-4 border border-gray-100">
+          <ActivitySquare className="w-8 h-8 text-orange-600" />
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Super Admin Dashboard
-              </h1>
-              <p className="text-gray-600 mt-1">Platform-wide analytics and management</p>
+            <div className="text-2xl font-bold text-gray-900">{stats.activeUsers}</div>
+            <div className="text-gray-600 text-sm">Active Users</div>
+          </div>
+        </div>
             </div>
             
-            <div className="flex items-center space-x-4">
+      {/* Timeline Dropdown */}
+      <div className="flex justify-end mb-2">
               <select 
                 value={selectedTimeframe}
-                onChange={(e) => setSelectedTimeframe(e.target.value)}
-                className="backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+          onChange={e => setSelectedTimeframe(e.target.value)}
+          className="bg-white/70 border border-gray-300 rounded-xl px-4 py-2 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
                 <option value="90d">Last 90 days</option>
                 <option value="1y">Last year</option>
               </select>
-              
-              <button 
-                onClick={fetchPlatformData}
-                className="backdrop-blur-md bg-blue-500/20 hover:bg-blue-500/30 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl transition-all duration-200 flex items-center space-x-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span>Refresh</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {error && (
-        <div className="mx-6 mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-xl">
-          {error}
-        </div>
-      )}
-
-      {/* Main Content */}
-      <main className="p-6 space-y-6">
-        {/* Navigation Tabs */}
-        <div className="flex space-x-1 mb-6">
-          <button className="backdrop-blur-md bg-blue-500/20 border border-blue-300/30 text-blue-700 px-4 py-2 rounded-xl font-medium">
-            Overview
-          </button>
-          <a href="/super-admin/organizations" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            Organizations
-          </a>
-          <a href="/super-admin/analytics" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            Analytics
-          </a>
-          <a href="/super-admin/system" className="backdrop-blur-md bg-white/20 border border-white/30 text-gray-700 px-4 py-2 rounded-xl hover:bg-white/30 transition-all">
-            System Health
-          </a>
         </div>
 
-        {/* Key Metrics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <MetricCard
-            title="Organizations"
-            value={stats.totalOrganizations}
-            change="+12%"
-            icon="🏢"
-            color="blue"
-          />
-          <MetricCard
-            title="Total Employees"
-            value={stats.totalEmployees.toLocaleString()}
-            change="+8%"
-            icon="👥"
-            color="green"
-          />
-          <MetricCard
-            title="Monthly Revenue"
-            value={`$${stats.monthlyRevenue.toLocaleString()}`}
-            change="+15%"
-            icon="💰"
-            color="purple"
-          />
-          <MetricCard
-            title="Response Rate"
-            value={`${stats.avgResponseRate}%`}
-            change="+3%"
-            icon="📊"
-            color="orange"
-          />
-        </div>
-
-        {/* Charts Row 1 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Monthly Growth Chart */}
-          <ChartCard title="Platform Growth" subtitle="Organizations, responses, and revenue over time">
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center"><TrendingUp className="w-5 h-5 mr-2 text-blue-600" />Monthly Trends</h2>
             <ResponsiveContainer width="100%" height={300}>
               <AreaChart data={monthlyData}>
                 <defs>
@@ -389,7 +513,16 @@ export default function SuperAdminDashboard() {
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="name" stroke="#6B7280" />
+              <XAxis
+                dataKey="name"
+                stroke="#6B7280"
+                tick={(props) => (
+                  <CustomXAxisTick
+                    {...props}
+                    selectedTimeframe={selectedTimeframe}
+                  />
+                )}
+              />
                 <YAxis stroke="#6B7280" />
                 <Tooltip 
                   contentStyle={{ 
@@ -403,54 +536,22 @@ export default function SuperAdminDashboard() {
                 <Area type="monotone" dataKey="responses" stroke="#10B981" fillOpacity={1} fill="url(#colorResponses)" />
               </AreaChart>
             </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Subscription Breakdown */}
-          <ChartCard title="Subscription Distribution" subtitle="Current subscription tiers across organizations">
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={subscriptionData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {subscriptionData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                    border: 'none', 
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                  }} 
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-wrap justify-center gap-4 mt-4">
-              {subscriptionData.map((item, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-sm text-gray-600">{item.name} ({item.value}%)</span>
-                </div>
-              ))}
-            </div>
-          </ChartCard>
         </div>
-
-        {/* Charts Row 2 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Mood Trends */}
-          <ChartCard title="Platform Mood Trends" subtitle="Average mood scores across all organizations">
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 border border-gray-100">
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center"><BarChart2 className="w-5 h-5 mr-2 text-purple-600" />Mood Trends</h2>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={moodTrends}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis dataKey="name" stroke="#6B7280" />
+              <XAxis
+                dataKey="name"
+                stroke="#6B7280"
+                tick={(props) => (
+                  <CustomXAxisTick
+                    {...props}
+                    selectedTimeframe={selectedTimeframe}
+                  />
+                )}
+              />
                 <YAxis domain={[1, 5]} stroke="#6B7280" />
                 <Tooltip 
                   contentStyle={{ 
@@ -470,32 +571,76 @@ export default function SuperAdminDashboard() {
                 />
               </LineChart>
             </ResponsiveContainer>
-          </ChartCard>
-
-          {/* Top Organizations */}
-          <ChartCard title="Most Active Organizations" subtitle="Organizations by response volume">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={topOrganizations} layout="horizontal">
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                <XAxis type="number" stroke="#6B7280" />
-                <YAxis dataKey="name" type="category" stroke="#6B7280" width={100} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                    border: 'none', 
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                  }} 
-                />
-                <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </ChartCard>
+        </div>
         </div>
 
         {/* Organizations Table */}
-        <OrganizationsTable organizations={organizations} />
-      </main>
+      <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow p-6 border border-gray-100">
+        <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center"><Building2 className="w-5 h-5 mr-2 text-blue-600" />Organizations</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-200/50">
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Organization</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Employees</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Responses</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Avg Mood</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Response Rate</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Subscription</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Revenue</th>
+                <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {organizations.map((org) => (
+                <tr key={org.id} className="border-b border-gray-100/50 hover:bg-white/20 transition-colors">
+                  <td className="py-3 px-4">
+                    <div className="font-medium text-gray-900">{org.name}</div>
+                    <div className="text-sm text-gray-500">ID: {org.id.substring(0, 8)}...</div>
+                  </td>
+                  <td className="py-3 px-4 text-gray-700">{org.employees}</td>
+                  <td className="py-3 px-4 text-gray-700">{org.responses}</td>
+                  <td className="py-3 px-4">
+                    <span className={`font-medium ${
+                      org.avgMood >= 4 ? 'text-green-600' :
+                      org.avgMood >= 3 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {org.avgMood || 'N/A'}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className={`font-medium ${
+                      org.responseRate >= 80 ? 'text-green-600' :
+                      org.responseRate >= 60 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`}>
+                      {org.responseRate}%
+                    </span>
+                  </td>
+                  <td className="py-3 px-4">
+                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                      org.subscription === 'active' ? 'bg-green-100 text-green-800' :
+                      org.subscription === 'trial' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {org.subscription}
+                    </span>
+                  </td>
+                  <td className="py-3 px-4 text-gray-700">Ksh {org.revenue}/mo</td>
+                  <td className="py-3 px-4">
+                    <span className={`w-2 h-2 rounded-full inline-block ${
+                      org.status === 'active' ? 'bg-green-500' :
+                      org.status === 'trial' ? 'bg-yellow-500' :
+                      'bg-red-500'
+                    }`}></span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   )
 }
@@ -610,7 +755,7 @@ function OrganizationsTable({ organizations }: { organizations: OrganizationData
                     {org.subscription}
                   </span>
                 </td>
-                <td className="py-3 px-4 text-gray-700">${org.revenue}/mo</td>
+                <td className="py-3 px-4 text-gray-700">Ksh {org.revenue}/mo</td>
                 <td className="py-3 px-4">
                   <span className={`w-2 h-2 rounded-full inline-block ${
                     org.status === 'active' ? 'bg-green-500' :
@@ -625,4 +770,39 @@ function OrganizationsTable({ organizations }: { organizations: OrganizationData
       </div>
     </div>
   )
+}
+
+// Custom XAxis tick renderer for better label spacing and formatting
+function CustomXAxisTick({ x, y, payload, index, selectedTimeframe }: {
+  x: number;
+  y: number;
+  payload: { value: string };
+  index: number;
+  selectedTimeframe: string;
+}) {
+  let show = true;
+  let label = payload.value;
+  if (selectedTimeframe === '7d' || selectedTimeframe === '30d') {
+    show = true;
+  } else if (selectedTimeframe === '90d') {
+    show = index % 2 === 0;
+  } else if (selectedTimeframe === '1y') {
+    show = index % 3 === 0;
+  }
+  if (!show) return null;
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text
+        x={0}
+        y={0}
+        dy={16}
+        textAnchor="end"
+        fill="#6B7280"
+        fontSize={12}
+        transform="rotate(-35)"
+      >
+        {label.length > 12 ? label.slice(0, 12) + '…' : label}
+      </text>
+    </g>
+  );
 }

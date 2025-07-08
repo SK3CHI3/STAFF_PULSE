@@ -24,8 +24,14 @@ export default function Login() {
       }
 
       if (user) {
-        // Redirect to dashboard on successful login
-        window.location.href = '/dashboard'
+        // Fetch the user's profile to get their role
+        const { getUserProfile } = await import('@/lib/auth');
+        const { data: profile } = await getUserProfile(user.id);
+        if (profile?.role === 'super_admin') {
+          window.location.href = '/super-admin';
+        } else {
+          window.location.href = '/dashboard';
+        }
       }
     } catch (error) {
       console.error('Login error:', error)
@@ -91,7 +97,7 @@ export default function Login() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
-                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                     placeholder="Enter your email"
                   />
                   <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
@@ -113,7 +119,7 @@ export default function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm"
+                    className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
                     placeholder="Enter your password"
                   />
                   <button

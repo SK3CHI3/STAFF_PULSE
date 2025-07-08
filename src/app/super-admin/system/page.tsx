@@ -31,10 +31,10 @@ export default function SystemHealthPage() {
   const [alerts, setAlerts] = useState<SystemAlert[]>([])
   const [performanceData, setPerformanceData] = useState<any[]>([])
   const [errorData, setErrorData] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  const { profile } = useAuth()
+  const { profile, loading } = useAuth()
 
   useEffect(() => {
     if (profile?.role === 'super_admin') {
@@ -47,7 +47,7 @@ export default function SystemHealthPage() {
 
   const fetchSystemData = async () => {
     try {
-      setLoading(true)
+      setDataLoading(true)
       const res = await fetch('/api/super-admin/system-health');
       const data = await res.json();
       if (data.success) {
@@ -62,7 +62,7 @@ export default function SystemHealthPage() {
     } catch (err: any) {
       setError(err.message)
     } finally {
-      setLoading(false)
+      setDataLoading(false)
     }
   }
 
@@ -117,6 +117,17 @@ export default function SystemHealthPage() {
     setAlerts(prev => prev.map(alert => 
       alert.id === alertId ? { ...alert, resolved: true } : alert
     ))
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   if (!profile || profile.role !== 'super_admin') {

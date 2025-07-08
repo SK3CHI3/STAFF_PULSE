@@ -27,10 +27,10 @@ export default function OrganizationsManagement() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   
-  const { profile } = useAuth()
+  const { profile, loading } = useAuth()
 
   useEffect(() => {
     if (profile?.role === 'super_admin') {
@@ -44,7 +44,7 @@ export default function OrganizationsManagement() {
 
   const fetchOrganizations = async () => {
     try {
-      setLoading(true)
+      setDataLoading(true)
       
       const { data, error } = await supabase
         .from('organizations')
@@ -68,7 +68,7 @@ export default function OrganizationsManagement() {
     } catch (err: any) {
       setError(err.message)
     } finally {
-      setLoading(false)
+      setDataLoading(false)
     }
   }
 
@@ -123,6 +123,17 @@ export default function OrganizationsManagement() {
     }
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
   if (!profile || profile.role !== 'super_admin') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -135,7 +146,7 @@ export default function OrganizationsManagement() {
     )
   }
 
-  if (loading) {
+  if (dataLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">

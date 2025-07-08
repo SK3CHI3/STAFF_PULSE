@@ -61,11 +61,11 @@ export default function SuperAdminDashboard() {
   const [moodTrends, setMoodTrends] = useState<ChartData[]>([])
   const [subscriptionData, setSubscriptionData] = useState<ChartData[]>([])
   const [topOrganizations, setTopOrganizations] = useState<ChartData[]>([])
-  const [loading, setLoading] = useState(true)
+  const [dataLoading, setDataLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedTimeframe, setSelectedTimeframe] = useState('7d')
   
-  const { user, profile } = useAuth()
+  const { user, profile, loading } = useAuth()
 
   useEffect(() => {
     if (profile?.role === 'super_admin') {
@@ -75,7 +75,7 @@ export default function SuperAdminDashboard() {
 
   const fetchPlatformData = async () => {
     try {
-      setLoading(true)
+      setDataLoading(true)
       
       // Fetch all platform statistics
       await Promise.all([
@@ -90,7 +90,7 @@ export default function SuperAdminDashboard() {
     } catch (err: any) {
       setError(err.message)
     } finally {
-      setLoading(false)
+      setDataLoading(false)
     }
   }
 
@@ -417,6 +417,14 @@ export default function SuperAdminDashboard() {
     setTopOrganizations(top)
   }
 
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
   if (!profile || profile.role !== 'super_admin') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -429,11 +437,11 @@ export default function SuperAdminDashboard() {
     )
   }
 
-  if (loading) {
+  if (dataLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
+      </div>
     )
   }
 

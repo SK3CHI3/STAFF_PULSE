@@ -294,7 +294,7 @@ export default function SuperAdminDashboard() {
               <select 
                 value={selectedTimeframe}
                 onChange={(e) => setSelectedTimeframe(e.target.value)}
-                className="backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
               >
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>

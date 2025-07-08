@@ -572,7 +572,7 @@ export default function Home() {
           <div className="border-t border-white/10 pt-8">
             <div className="flex flex-col md:flex-row justify-between items-center">
               <p className="text-white/40 mb-4 md:mb-0">
-                © 2024 StaffPulse. Crafted with precision for the future of work.
+                © {new Date().getFullYear()} StaffPulse. Crafted with precision for the future of work.
               </p>
               <div className="flex space-x-6 text-white/40">
                 <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>

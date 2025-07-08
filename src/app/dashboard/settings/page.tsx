@@ -84,7 +84,7 @@ export default function Settings() {
                       <select
                         value={settings.checkInFrequency}
                         onChange={(e) => setSettings({...settings, checkInFrequency: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                       >
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
@@ -109,7 +109,7 @@ export default function Settings() {
                       <select
                         value={settings.timezone}
                         onChange={(e) => setSettings({...settings, timezone: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                       >
                         <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
                         <option value="UTC">UTC</option>
@@ -245,7 +245,7 @@ export default function Settings() {
 
                     <div>
                       <h3 className="font-medium text-gray-900 mb-3">Data Retention</h3>
-                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900">
                         <option value="1year">1 Year</option>
                         <option value="2years">2 Years</option>
                         <option value="3years">3 Years</option>

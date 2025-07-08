@@ -210,7 +210,7 @@ export default function OrganizationsManagement() {
               <select 
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="backdrop-blur-md bg-white/20 border border-white/30 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>

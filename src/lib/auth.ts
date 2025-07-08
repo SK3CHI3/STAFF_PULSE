@@ -72,20 +72,23 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
       // Continue anyway, organization can be created later
     }
 
-    // 4. Update user profile with organization ID
+    // 4. Upsert user profile with organization ID and correct info
     if (orgData) {
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
-          organization_id: orgData.id,
-          first_name: data.firstName,
-          last_name: data.lastName,
-          role: 'hr_admin'
-        })
-        .eq('id', authData.user.id)
+        .upsert([
+          {
+            id: authData.user.id,
+            organization_id: orgData.id,
+            first_name: data.firstName,
+            last_name: data.lastName,
+            email: data.email,
+            role: 'hr_admin'
+          }
+        ], { onConflict: 'id' })
 
       if (profileError) {
-        console.error('Failed to update profile:', profileError)
+        console.error('Failed to upsert profile:', profileError)
       }
     }
 

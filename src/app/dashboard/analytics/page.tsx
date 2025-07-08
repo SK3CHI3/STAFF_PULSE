@@ -20,7 +20,7 @@ export default function Analytics() {
               <select 
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
               >
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>

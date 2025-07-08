@@ -198,7 +198,7 @@ export default function Support() {
                       <select
                         value={ticketForm.priority}
                         onChange={(e) => setTicketForm({...ticketForm, priority: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                       >
                         <option value="low">Low</option>
                         <option value="medium">Medium</option>
@@ -212,7 +212,7 @@ export default function Support() {
                       <select
                         value={ticketForm.category}
                         onChange={(e) => setTicketForm({...ticketForm, category: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                       >
                         <option value="general">General</option>
                         <option value="technical">Technical Issue</option>

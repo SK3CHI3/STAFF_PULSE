@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { getCurrentUser, getUserProfile, signOut } from '@/lib/auth'
 import { User } from '@supabase/supabase-js'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 
 interface UserProfile {
   id: string
@@ -22,6 +23,17 @@ export default function Dashboard() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState('30d')
+
+  // Mood data state for dynamic chart
+  const [moodData, setMoodData] = useState([
+    { day: 'Mon', mood: 3.8 },
+    { day: 'Tue', mood: 4.2 },
+    { day: 'Wed', mood: 4.0 },
+    { day: 'Thu', mood: 4.4 },
+    { day: 'Fri', mood: 4.1 },
+    { day: 'Sat', mood: 3.9 },
+    { day: 'Sun', mood: 4.3 },
+  ])
 
   // Try to load cached profile from localStorage first
   useEffect(() => {
@@ -137,6 +149,50 @@ export default function Dashboard() {
       setLoading(false)
     }, 500)
   }, [])
+
+  // Helper to get last N month names
+  function getLastNMonths(n: number) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+    const now = new Date();
+    const result = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      result.push(months[d.getMonth()]);
+    }
+    return result;
+  }
+
+  // Update mood data when timeRange changes (ready for real data fetch)
+  useEffect(() => {
+    if (timeRange === '7d') {
+      setMoodData([
+        { day: 'Mon', mood: 3.8 },
+        { day: 'Tue', mood: 4.2 },
+        { day: 'Wed', mood: 4.0 },
+        { day: 'Thu', mood: 4.4 },
+        { day: 'Fri', mood: 4.1 },
+        { day: 'Sat', mood: 3.9 },
+        { day: 'Sun', mood: 4.3 },
+      ])
+    } else if (timeRange === '30d') {
+      setMoodData([
+        { day: 'Week 1', mood: 4.0 },
+        { day: 'Week 2', mood: 4.2 },
+        { day: 'Week 3', mood: 4.1 },
+        { day: 'Week 4', mood: 4.3 },
+      ])
+    } else if (timeRange === '90d') {
+      const last3Months = getLastNMonths(3);
+      setMoodData([
+        { day: last3Months[0], mood: 4.1 },
+        { day: last3Months[1], mood: 4.0 },
+        { day: last3Months[2], mood: 4.2 },
+      ])
+    }
+  }, [timeRange])
 
   const handleSignOut = async () => {
     try {
@@ -277,105 +333,40 @@ export default function Dashboard() {
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Mood Trends Chart */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          {/* Mood Trends Chart (Redesigned) */}
+          <div className="lg:col-span-2 bg-white/80 backdrop-blur-xl border border-white/30 rounded-2xl shadow-xl p-8 relative overflow-hidden">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold text-gray-900">Mood Trends</h2>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900">Mood Trends</h2>
+                <p className="text-gray-500 text-xs">Average daily mood score ({timeRange === '7d' ? 'Last 7 days' : timeRange === '30d' ? 'Last 30 days' : 'Last 3 months'})</p>
+              </div>
               <select
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
               >
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
                 <option value="90d">Last 3 months</option>
               </select>
             </div>
-
-            {/* Actual Chart */}
-            <div className="h-64 relative">
-              <svg className="w-full h-full" viewBox="0 0 400 200">
-                {/* Chart background */}
-                <defs>
-                  <linearGradient id="moodGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                    <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.3"/>
-                    <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.1"/>
-                  </linearGradient>
-                </defs>
-
-                {/* Grid lines */}
-                <g stroke="#E5E7EB" strokeWidth="1">
-                  <line x1="50" y1="20" x2="50" y2="180" />
-                  <line x1="50" y1="180" x2="380" y2="180" />
-                  {[40, 80, 120, 160].map((y, i) => (
-                    <line key={i} x1="45" y1={y} x2="380" y2={y} strokeDasharray="2,2" />
-                  ))}
-                </g>
-
-                {/* Y-axis labels */}
-                <g fill="#6B7280" fontSize="12" textAnchor="end">
-                  <text x="45" y="45">5</text>
-                  <text x="45" y="85">4</text>
-                  <text x="45" y="125">3</text>
-                  <text x="45" y="165">2</text>
-                  <text x="45" y="185">1</text>
-                </g>
-
-                {/* Sample data line */}
-                <path
-                  d="M 70 120 Q 120 100 170 80 T 270 90 T 350 70"
-                  stroke="#3B82F6"
-                  strokeWidth="3"
-                  fill="none"
-                  strokeLinecap="round"
-                />
-
-                {/* Area under curve */}
-                <path
-                  d="M 70 120 Q 120 100 170 80 T 270 90 T 350 70 L 350 180 L 70 180 Z"
-                  fill="url(#moodGradient)"
-                />
-
-                {/* Data points */}
-                {[
-                  { x: 70, y: 120 },
-                  { x: 120, y: 100 },
-                  { x: 170, y: 80 },
-                  { x: 220, y: 85 },
-                  { x: 270, y: 90 },
-                  { x: 320, y: 75 },
-                  { x: 350, y: 70 }
-                ].map((point, i) => (
-                  <circle
-                    key={i}
-                    cx={point.x}
-                    cy={point.y}
-                    r="4"
-                    fill="#3B82F6"
-                    stroke="#FFFFFF"
-                    strokeWidth="2"
-                  />
-                ))}
-
-                {/* X-axis labels */}
-                <g fill="#6B7280" fontSize="11" textAnchor="middle">
-                  <text x="70" y="195">Mon</text>
-                  <text x="120" y="195">Tue</text>
-                  <text x="170" y="195">Wed</text>
-                  <text x="220" y="195">Thu</text>
-                  <text x="270" y="195">Fri</text>
-                  <text x="320" y="195">Sat</text>
-                  <text x="350" y="195">Sun</text>
-                </g>
-              </svg>
-
-              {/* Chart legend */}
-              <div className="absolute top-4 right-4 flex items-center space-x-4 text-sm">
-                <div className="flex items-center space-x-2">
-                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                  <span className="text-gray-600">Average Mood</span>
-                </div>
-              </div>
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={moodData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3BB273" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#3BB273" stopOpacity={0.05}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                  <XAxis dataKey="day" tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[1, 5]} tickCount={5} tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB' }} formatter={(value) => typeof value === 'number' ? value.toFixed(2) : value} />
+                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ color: '#3BB273', fontWeight: 500, fontSize: 14 }} />
+                  <Area type="monotone" dataKey="mood" name="Average Mood" stroke="#3BB273" fillOpacity={1} fill="url(#colorMood)" dot={{ r: 5, fill: '#3BB273', stroke: '#fff', strokeWidth: 2 }} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
 

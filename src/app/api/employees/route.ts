@@ -54,8 +54,8 @@ export async function GET(request: NextRequest) {
         ...emp,
         avg_mood: avgMood ? Number(avgMood.toFixed(1)) : undefined,
         response_count: moods.length,
-        last_response: lastResponse,
-        mood_checkins: undefined // Remove to reduce payload size
+        last_response: lastResponse
+        // mood_checkins is included by default
       }
     }) || []
 

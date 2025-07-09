@@ -45,26 +45,11 @@ export default function OrganizationsManagement() {
   const fetchOrganizations = async () => {
     try {
       setDataLoading(true)
-      
-      const { data, error } = await supabase
-        .from('organizations')
-        .select(`
-          *,
-          employees(count),
-          mood_checkins(count)
-        `)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-
-      const processedOrgs = data?.map(org => ({
-        ...org,
-        employees_count: org.employees?.[0]?.count || 0,
-        responses_count: org.mood_checkins?.[0]?.count || 0,
-        last_activity: org.updated_at
-      })) || []
-
-      setOrganizations(processedOrgs)
+      setError(null)
+      const res = await fetch('/api/super-admin/organizations')
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error || 'Failed to fetch organizations')
+      setOrganizations(result.organizations || [])
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -91,16 +76,14 @@ export default function OrganizationsManagement() {
 
   const updateOrganizationStatus = async (orgId: string, status: string) => {
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .update({ subscription_status: status })
-        .eq('id', orgId)
-
-      if (error) throw error
-
-      setOrganizations(prev => prev.map(org => 
-        org.id === orgId ? { ...org, subscription_status: status } : org
-      ))
+      const res = await fetch('/api/super-admin/organizations', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId, status })
+      })
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error || 'Failed to update status')
+      setOrganizations(prev => prev.map(org => org.id === orgId ? { ...org, subscription_status: status } : org))
     } catch (err: any) {
       setError(err.message)
     }
@@ -108,15 +91,10 @@ export default function OrganizationsManagement() {
 
   const deleteOrganization = async (orgId: string) => {
     if (!confirm('Are you sure? This will permanently delete the organization and all its data.')) return
-
     try {
-      const { error } = await supabase
-        .from('organizations')
-        .delete()
-        .eq('id', orgId)
-
-      if (error) throw error
-
+      const res = await fetch(`/api/super-admin/organizations?id=${orgId}`, { method: 'DELETE' })
+      const result = await res.json()
+      if (!result.success) throw new Error(result.error || 'Failed to delete organization')
       setOrganizations(prev => prev.filter(org => org.id !== orgId))
     } catch (err: any) {
       setError(err.message)
@@ -382,30 +360,30 @@ export default function OrganizationsManagement() {
 }
 
 // Stat Card Component
+const statCardColorClasses = {
+  blue: 'from-blue-500/30 to-blue-600/40 border-blue-200/40 text-blue-900',
+  green: 'from-green-500/30 to-green-600/40 border-green-200/40 text-green-900',
+  yellow: 'from-yellow-400/30 to-yellow-500/40 border-yellow-200/40 text-yellow-900',
+  red: 'from-red-500/30 to-red-600/40 border-red-200/40 text-red-900'
+};
+
 function StatCard({ title, value, icon, color }: {
   title: string
   value: number
   icon: React.ReactNode
   color: 'blue' | 'green' | 'yellow' | 'red'
 }) {
-  const colorClasses = {
-    blue: 'from-blue-500/20 to-blue-600/20 border-blue-200/30 text-blue-700',
-    green: 'from-green-500/20 to-green-600/20 border-green-200/30 text-green-700',
-    yellow: 'from-yellow-500/20 to-yellow-600/20 border-yellow-200/30 text-yellow-700',
-    red: 'from-red-500/20 to-red-600/20 border-red-200/30 text-red-700'
-  }
-
   return (
-    <div className={`backdrop-blur-md bg-gradient-to-br ${colorClasses[color]} border rounded-2xl p-6 transition-all duration-200 hover:scale-105`}>
+    <div className={`glass backdrop-blur-xl bg-gradient-to-br ${statCardColorClasses[color]} border rounded-2xl p-6 shadow-2xl transition-all duration-200 hover:scale-105`}>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium opacity-80">{title}</p>
-          <p className="text-2xl font-bold mt-1">{value}</p>
+          <p className="text-sm font-bold opacity-90 uppercase tracking-wide">{title}</p>
+          <p className="text-3xl font-extrabold mt-1">{value}</p>
         </div>
-        <div className="text-3xl opacity-80">{icon}</div>
+        <div className="text-3xl opacity-90">{icon}</div>
       </div>
     </div>
-  )
+  );
 }
 
 // Organization Modal Component (placeholder)
@@ -419,9 +397,9 @@ function OrganizationModal({
   onSuccess: () => void
 }) {
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h2 className="text-lg font-semibold mb-4">
+    <div className="fixed inset-0 bg-white/70 backdrop-blur-xl flex items-center justify-center z-50">
+      <div className="glass backdrop-blur-xl bg-white/10 border border-white/20 rounded-2xl shadow-2xl p-8 w-full max-w-lg">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">
           {organization ? 'Edit Organization' : 'Create Organization'}
         </h2>
         <p className="text-gray-600 mb-4">
@@ -430,7 +408,7 @@ function OrganizationModal({
         <div className="flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold shadow-sm"
           >
             Close
           </button>

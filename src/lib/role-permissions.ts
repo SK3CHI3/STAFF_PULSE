@@ -168,7 +168,6 @@ export function getNavigationItems(role: UserRole) {
       { name: 'Employees', href: '/dashboard/employees', icon: 'users' },
       { name: 'Check-ins', href: '/dashboard/checkins', icon: 'message' },
       { name: 'Insights', href: '/dashboard/insights', icon: 'brain' },
-      { name: 'Schedules', href: '/dashboard/schedules', icon: 'calendar' },
       { name: 'Analytics', href: '/dashboard/analytics', icon: 'chart' },
       { name: 'Settings', href: '/dashboard/settings', icon: 'settings' }
     ]

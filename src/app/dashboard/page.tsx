@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { getCurrentUser, getUserProfile, signOut } from '@/lib/auth'
 import { User } from '@supabase/supabase-js'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
@@ -41,17 +41,6 @@ export default function Dashboard() {
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ]
 
-  // Mood data state for dynamic chart
-  const [moodData, setMoodData] = useState([
-    { day: 'Mon', mood: 3.8 },
-    { day: 'Tue', mood: 4.2 },
-    { day: 'Wed', mood: 4.0 },
-    { day: 'Thu', mood: 4.4 },
-    { day: 'Fri', mood: 4.1 },
-    { day: 'Sat', mood: 3.9 },
-    { day: 'Sun', mood: 4.3 },
-  ])
-
   // Mock departments (replace with real fetch if needed)
   const mockDepartments = [
     { name: 'All Departments', value: 'all' },
@@ -60,6 +49,28 @@ export default function Dashboard() {
     { name: 'Marketing', value: 'Marketing' },
     { name: 'Sales', value: 'Sales' },
   ]
+
+  // Add new state for dashboard metrics
+  const [employeeStats, setEmployeeStats] = useState({ total: 0, avgMood: 0, responseRate: 0 });
+  const [employeeStatsLoading, setEmployeeStatsLoading] = useState(true);
+  const [employeeStatsError, setEmployeeStatsError] = useState<string | null>(null);
+
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alertsLoading, setAlertsLoading] = useState(true);
+  const [alertsError, setAlertsError] = useState<string | null>(null);
+
+  const [recentResponses, setRecentResponses] = useState<any[]>([]);
+  const [recentResponsesLoading, setRecentResponsesLoading] = useState(true);
+  const [recentResponsesError, setRecentResponsesError] = useState<string | null>(null);
+
+  const [moodTrends, setMoodTrends] = useState<any[]>([]);
+  const [moodTrendsLoading, setMoodTrendsLoading] = useState(true);
+  const [moodTrendsError, setMoodTrendsError] = useState<string | null>(null);
+
+  const [hasHydrated, setHasHydrated] = useState(false)
+  useEffect(() => { setHasHydrated(true) }, [])
+  // In all places where toLocaleDateString is used for chart labels, use:
+  // hasHydrated ? new Date(...).toLocaleDateString() : new Date(...).toISOString().slice(0,10)
 
   // Try to load cached profile from localStorage first
   useEffect(() => {
@@ -171,10 +182,60 @@ export default function Dashboard() {
     return result;
   }
 
-  // Update mood data when timeRange changes (ready for real data fetch)
-  useEffect(() => {
+  // Helper to process moodTrends into chart data
+  const processMoodTrends = useCallback(() => {
+    if (moodTrendsLoading || moodTrendsError) return [];
+    if (!moodTrends || moodTrends.length === 0) return [];
+
+    // Try to extract a time series from moodTrends (AI insights)
+    // If insights have a date and average mood, use those
+    // Otherwise, fallback to static data
+    // Example: [{ created_at, data_points: { average_mood } }]
+    let chartData: { day: string, mood: number }[] = [];
     if (timeRange === '7d') {
-      setMoodData([
+      // Use last 7 days
+      chartData = moodTrends
+        .filter((insight: any) => insight.created_at && insight.data_points && insight.data_points.average_mood)
+        .slice(0, 7)
+        .map((insight: any) => ({
+          day: hasHydrated ? new Date(insight.created_at).toLocaleDateString(undefined, { weekday: 'short' }) : insight.created_at.slice(0, 10),
+          mood: Number(insight.data_points.average_mood)
+        }));
+    } else if (timeRange === '30d') {
+      // Group by week (4 weeks)
+      const weeks: { [key: string]: number[] } = {};
+      moodTrends.forEach((insight: any) => {
+        if (insight.created_at && insight.data_points && insight.data_points.average_mood) {
+          const date = new Date(insight.created_at);
+          const week = `${date.getFullYear()}-W${Math.ceil(date.getDate() / 7)}`;
+          if (!weeks[week]) weeks[week] = [];
+          weeks[week].push(Number(insight.data_points.average_mood));
+        }
+      });
+      chartData = Object.entries(weeks).slice(-4).map(([week, moods]) => ({
+        day: week,
+        mood: moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 0
+      }));
+    } else if (timeRange === '90d') {
+      // Group by month (3 months)
+      const months: { [key: string]: number[] } = {};
+      moodTrends.forEach((insight: any) => {
+        if (insight.created_at && insight.data_points && insight.data_points.average_mood) {
+          const date = new Date(insight.created_at);
+          const month = date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+          if (!months[month]) months[month] = [];
+          months[month].push(Number(insight.data_points.average_mood));
+        }
+      });
+      chartData = Object.entries(months).slice(-3).map(([month, moods]) => ({
+        day: month,
+        mood: moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 0
+      }));
+    }
+    // Fallback to static data if not enough points
+    if (chartData.length === 0) {
+      if (timeRange === '7d') {
+        chartData = [
         { day: 'Mon', mood: 3.8 },
         { day: 'Tue', mood: 4.2 },
         { day: 'Wed', mood: 4.0 },
@@ -182,23 +243,24 @@ export default function Dashboard() {
         { day: 'Fri', mood: 4.1 },
         { day: 'Sat', mood: 3.9 },
         { day: 'Sun', mood: 4.3 },
-      ])
+        ];
     } else if (timeRange === '30d') {
-      setMoodData([
+        chartData = [
         { day: 'Week 1', mood: 4.0 },
         { day: 'Week 2', mood: 4.2 },
         { day: 'Week 3', mood: 4.1 },
         { day: 'Week 4', mood: 4.3 },
-      ])
+        ];
     } else if (timeRange === '90d') {
-      const last3Months = getLastNMonths(3);
-      setMoodData([
-        { day: last3Months[0], mood: 4.1 },
-        { day: last3Months[1], mood: 4.0 },
-        { day: last3Months[2], mood: 4.2 },
-      ])
+        chartData = [
+          { day: 'Jan', mood: 4.1 },
+          { day: 'Feb', mood: 4.0 },
+          { day: 'Mar', mood: 4.2 },
+        ];
+      }
     }
-  }, [timeRange])
+    return chartData;
+  }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
 
   // Fetch departments when modal opens
   useEffect(() => {
@@ -237,6 +299,100 @@ export default function Dashboard() {
       fetchDepartments();
     }
   }, [showCheckinModal]);
+
+  // Fetch employee stats (total, avg mood, response rate)
+  const fetchEmployeeStats = useCallback(async (orgId: string) => {
+    setEmployeeStatsLoading(true);
+    setEmployeeStatsError(null);
+    try {
+      const res = await fetch(`/api/employees?organizationId=${orgId}`);
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to fetch employees');
+      const employees = result.employees || [];
+      const total = employees.length;
+      let totalResponses = 0;
+      let moodSum = 0;
+      let moodCount = 0;
+      employees.forEach((emp: any) => {
+        if (typeof emp.response_count === 'number') totalResponses += emp.response_count;
+        if (typeof emp.avg_mood === 'number') {
+          moodSum += emp.avg_mood;
+          moodCount++;
+        }
+      });
+      const avgMood = moodCount > 0 ? moodSum / moodCount : 0;
+      // For response rate, assume 1 check-in per week per employee (or adjust as needed)
+      const responseRate = total > 0 ? Math.round((totalResponses / total) * 100) : 0;
+      setEmployeeStats({ total, avgMood, responseRate });
+    } catch (err: any) {
+      setEmployeeStatsError(err.message || 'Failed to fetch employee stats');
+    } finally {
+      setEmployeeStatsLoading(false);
+    }
+  }, []);
+
+  // Fetch alerts
+  const fetchAlerts = useCallback(async (orgId: string) => {
+    setAlertsLoading(true);
+    setAlertsError(null);
+    try {
+      const res = await fetch(`/api/super-admin/system-health?organizationId=${orgId}`);
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to fetch alerts');
+      // Only unresolved/active alerts
+      const activeAlerts = (result.alerts || []).filter((a: any) => !a.resolved);
+      setAlerts(activeAlerts);
+    } catch (err: any) {
+      setAlertsError(err.message || 'Failed to fetch alerts');
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, []);
+
+  // Fetch recent responses
+  const fetchRecentResponses = useCallback(async (orgId: string) => {
+    setRecentResponsesLoading(true);
+    setRecentResponsesError(null);
+    try {
+      const res = await fetch(`/api/whatsapp/send-checkin?organizationId=${orgId}&limit=4`);
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to fetch responses');
+      setRecentResponses(result.data || []);
+    } catch (err: any) {
+      setRecentResponsesError(err.message || 'Failed to fetch responses');
+    } finally {
+      setRecentResponsesLoading(false);
+    }
+  }, []);
+
+  // Fetch mood trends (use AI insights or mood_checkins as available)
+  const fetchMoodTrends = useCallback(async (orgId: string) => {
+    setMoodTrendsLoading(true);
+    setMoodTrendsError(null);
+    try {
+      // For now, use AI insights endpoint for mood trends
+      const res = await fetch(`/api/ai/insights?organizationId=${orgId}&limit=50`);
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to fetch mood trends');
+      // If insights have trend data, extract it; else fallback to empty
+      // (You may want to adjust this logic based on your actual data)
+      setMoodTrends(result.insights || []);
+    } catch (err: any) {
+      setMoodTrendsError(err.message || 'Failed to fetch mood trends');
+    } finally {
+      setMoodTrendsLoading(false);
+    }
+  }, []);
+
+  // Fetch all dashboard data when profile is loaded
+  useEffect(() => {
+    if (profile?.organization?.id) {
+      fetchEmployeeStats(profile.organization.id);
+      fetchAlerts(profile.organization.id);
+      fetchRecentResponses(profile.organization.id);
+      fetchMoodTrends(profile.organization.id);
+    }
+  }, [profile, fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends]);
 
   const handleSignOut = async () => {
     try {
@@ -381,7 +537,15 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Employees</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">24</p>
+                <p className="text-3xl font-bold text-gray-900 mt-2">
+                  {employeeStatsLoading ? (
+                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></span>
+                  ) : employeeStatsError ? (
+                    <span className="text-red-600">{employeeStatsError}</span>
+                  ) : (
+                    employeeStats.total
+                  )}
+                </p>
                 <p className="text-xs text-green-600 mt-1">+2 this month</p>
               </div>
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
@@ -396,7 +560,15 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Response Rate</p>
-                <p className="text-3xl font-bold text-green-600 mt-2">87%</p>
+                <p className="text-3xl font-bold text-green-600 mt-2">
+                  {employeeStatsLoading ? (
+                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mr-2"></span>
+                  ) : employeeStatsError ? (
+                    <span className="text-red-600">{employeeStatsError}</span>
+                  ) : (
+                    employeeStats.responseRate
+                  )}%
+                </p>
                 <p className="text-xs text-green-600 mt-1">+5% from last week</p>
               </div>
               <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center">
@@ -411,7 +583,14 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Average Mood</p>
-                <p className="text-3xl font-bold text-blue-600 mt-2">4.2</p>
+                <p className="text-3xl font-bold text-blue-600 mt-2">
+                  {employeeStatsLoading ? (
+                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></span>
+                  ) : employeeStatsError ? (
+                    <span className="text-red-600">{employeeStatsError}</span>
+                  ) : (
+                    employeeStats.avgMood.toFixed(1)
+                  )}</p>
                 <p className="text-xs text-blue-600 mt-1">Excellent range</p>
               </div>
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
@@ -426,7 +605,15 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Active Alerts</p>
-                <p className="text-3xl font-bold text-orange-600 mt-2">2</p>
+                <p className="text-3xl font-bold text-orange-600 mt-2">
+                  {alertsLoading ? (
+                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600 mr-2"></span>
+                  ) : alertsError ? (
+                    <span className="text-red-600">{alertsError}</span>
+                  ) : (
+                    alerts.length
+                  )}
+                </p>
                 <p className="text-xs text-orange-600 mt-1">Needs attention</p>
               </div>
               <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center">
@@ -458,8 +645,16 @@ export default function Dashboard() {
               </select>
             </div>
             <div className="h-72 w-full">
+              {moodTrendsLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></span>
+                  <span className="ml-2 text-gray-700">Loading mood trends...</span>
+                </div>
+              ) : moodTrendsError ? (
+                <div className="flex items-center justify-center h-full text-red-600">{moodTrendsError}</div>
+              ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={moodData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <AreaChart data={processMoodTrends()} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                 <defs>
                     <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3BB273" stopOpacity={0.4}/>
@@ -474,6 +669,7 @@ export default function Dashboard() {
                   <Area type="monotone" dataKey="mood" name="Average Mood" stroke="#3BB273" fillOpacity={1} fill="url(#colorMood)" dot={{ r: 5, fill: '#3BB273', stroke: '#fff', strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
+              )}
             </div>
           </div>
 
@@ -482,49 +678,31 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold text-gray-900 mb-6">Recent Responses</h2>
 
             <div className="space-y-4">
-              <div className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-                  <span className="text-green-600 font-bold text-sm">5</span>
+              {recentResponsesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></span>
+                  <span className="ml-2 text-gray-700">Loading responses...</span>
+                </div>
+              ) : recentResponsesError ? (
+                <div className="text-center text-red-600 py-8">{recentResponsesError}</div>
+              ) : recentResponses.length === 0 ? (
+                <div className="text-center text-gray-500 py-8">No recent responses yet.</div>
+              ) : (
+                recentResponses.map((response, index) => (
+                  <div key={index} className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                      <span className="text-green-600 font-bold text-sm">{response.response_count || 0}</span>
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900">Sarah K.</p>
-                  <p className="text-xs text-gray-500">2 hours ago • Engineering</p>
+                      <p className="text-sm font-semibold text-gray-900">{response.employee_name || 'N/A'}</p>
+                      <p className="text-xs text-gray-500">
+                        {response.sent_at ? new Date(response.sent_at).toLocaleDateString() : 'N/A'} • {response.department || 'N/A'}
+                      </p>
                 </div>
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
               </div>
-
-              <div className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
-                  <span className="text-yellow-600 font-bold text-sm">3</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900">John D.</p>
-                  <p className="text-xs text-gray-500">4 hours ago • Marketing</p>
-                </div>
-                <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-              </div>
-
-              <div className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <span className="text-blue-600 font-bold text-sm">4</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900">Mary L.</p>
-                  <p className="text-xs text-gray-500">6 hours ago • Design</p>
-                </div>
-                <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-              </div>
-
-              <div className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
-                  <span className="text-red-600 font-bold text-sm">2</span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-gray-900">Alex M.</p>
-                  <p className="text-xs text-gray-500">8 hours ago • Sales</p>
-                </div>
-                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-              </div>
+                ))
+              )}
             </div>
 
             <button className="w-full mt-6 text-blue-600 text-sm font-semibold hover:text-blue-700 transition-colors py-2 rounded-lg hover:bg-blue-50">

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useAuth } from '@/lib/auth'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -9,33 +10,25 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
+  const { signIn, refreshProfile } = useAuth()
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
 
     try {
-      const { signIn } = await import('@/lib/auth')
-      const { user, error } = await signIn({ email, password })
-
+      const { error } = await signIn({ email, password })
       if (error) {
         alert(error.message)
-        setIsLoading(false)
-        return
+      } else {
+        // Immediately refresh profile after login
+        await refreshProfile()
+        // Redirect to dashboard
+        window.location.href = '/dashboard'
       }
-
-      if (user) {
-        // Fetch the user's profile to get their role
-        const { getUserProfile } = await import('@/lib/auth');
-        const { data: profile } = await getUserProfile(user.id);
-        if (profile?.role === 'super_admin') {
-          window.location.href = '/super-admin';
-        } else {
-          window.location.href = '/dashboard';
-        }
-      }
-    } catch (error) {
-      console.error('Login error:', error)
-      alert('An error occurred during login. Please try again.')
+    } catch (err: any) {
+      alert(err.message || 'Login failed')
+    } finally {
       setIsLoading(false)
     }
   }

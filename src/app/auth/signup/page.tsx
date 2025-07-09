@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useAuth } from '@/lib/auth'
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -26,6 +27,8 @@ export default function Signup() {
     }))
   }
 
+  const { signUp, refreshProfile } = useAuth()
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!acceptTerms) {
@@ -40,31 +43,30 @@ export default function Signup() {
     setIsLoading(true)
 
     try {
-      const { signUp } = await import('@/lib/auth')
-      // 1. Create user in Supabase Auth
-      const { user, error } = await signUp(formData)
-      if (error || !user) {
-        alert(error?.message || 'Failed to create user account')
+      const { error } = await signUp(formData)
+      if (error) {
+        alert(error.message || 'Failed to create user account')
         setIsLoading(false)
         return
       }
+      // Immediately refresh profile after signup
+      await refreshProfile()
       // 2. Call secure API route to create org/profile
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, userId: user.id })
+        body: JSON.stringify({ ...formData, userId: null }) // userId will be set by backend if needed
       })
       const result = await res.json()
-      if (!res.ok || !result.success) {
-        alert(result.error || 'Failed to complete signup. Please try again.')
+      if (!result.success) {
+        alert(result.error || 'Failed to complete signup')
         setIsLoading(false)
         return
       }
-      // 3. Redirect to dashboard
       window.location.href = '/dashboard'
-    } catch (error) {
-      console.error('Signup error:', error)
-      alert('An error occurred during signup. Please try again.')
+    } catch (err: any) {
+      alert(err.message || 'Signup failed')
+    } finally {
       setIsLoading(false)
     }
   }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth'
 
@@ -38,6 +38,8 @@ export default function Employees() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<any>(null)
+  const [hasHydrated, setHasHydrated] = useState(false)
+  useEffect(() => { setHasHydrated(true) }, [])
 
   const { user, profile: authProfile } = useAuth()
 
@@ -138,8 +140,18 @@ export default function Employees() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile, selectedDepartment, selectedStatus]);
 
+  // Memoize formatted last_response for each employee
+  const employeesWithFormattedDates = useMemo(() => {
+    return employees.map(emp => ({
+      ...emp,
+      last_response: emp.last_response
+        ? (hasHydrated ? new Date(emp.last_response).toLocaleDateString() : new Date(emp.last_response).toISOString().slice(0,10))
+        : null
+    }))
+  }, [employees, hasHydrated])
+
   // Filter employees
-  const filteredEmployees = employees.filter(employee => {
+  const filteredEmployees = employeesWithFormattedDates.filter(employee => {
     const matchesSearch =
       employee.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       employee.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -257,9 +269,12 @@ export default function Employees() {
         <div className="px-6 pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {departments.map(dept => (
-              <div key={dept.name} className="bg-white p-4 rounded-lg border border-gray-100">
-                <h3 className="font-medium text-gray-900">{dept.name}</h3>
-                <p className="text-2xl font-bold text-blue-600 mt-1">{dept.count}</p>
+              <div
+                key={dept.name}
+                className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow group cursor-pointer"
+              >
+                <h3 className="font-semibold text-gray-900 text-lg mb-1 group-hover:text-blue-700 transition-colors">{dept.name}</h3>
+                <p className="text-3xl font-extrabold text-blue-600 mt-1 mb-1 group-hover:text-blue-800 transition-colors">{dept.count}</p>
                 <p className="text-sm text-gray-500">employees</p>
               </div>
             ))}
@@ -542,8 +557,8 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fet
 
   return (
     <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg">
-        <h2 className="text-lg font-semibold mb-4">Add New Employee</h2>
+      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg border border-gray-100">
+        <h2 className="text-2xl font-bold text-gray-900 mb-4">Add New Employee</h2>
 
         {error && (
           <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -554,7 +569,7 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fet
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-800 mb-1">
+              <label className="block text-sm font-semibold text-gray-800 mb-1">
                 First Name *
               </label>
               <input
@@ -566,7 +581,7 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fet
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-800 mb-1">
+              <label className="block text-sm font-semibold text-gray-800 mb-1">
                 Last Name *
               </label>
               <input
@@ -580,7 +595,7 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fet
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-800 mb-1">
+            <label className="block text-sm font-semibold text-gray-800 mb-1">
               Email
             </label>
             <input
@@ -592,7 +607,7 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fet
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-800 mb-1">
+            <label className="block text-sm font-semibold text-gray-800 mb-1">
               WhatsApp Phone Number *
             </label>
             <input
@@ -606,12 +621,12 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fet
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-800 mb-1">
+            <label className="block text-sm font-semibold text-gray-800 mb-1">
               Department
             </label>
             <div className="flex gap-2">
               <select
-                value={formData.department}
+              value={formData.department}
                 onChange={e => setFormData({ ...formData, department: e.target.value })}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
               >
@@ -620,21 +635,21 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fet
                   <option key={dept.id} value={dept.name}>{dept.name}</option>
                 ))}
               </select>
-              <button type="button" onClick={() => setShowDeptModal(true)} className="px-2 py-1 bg-blue-100 text-blue-700 rounded">+</button>
-            </div>
+              <button type="button" onClick={() => setShowDeptModal(true)} className="px-2 py-1 bg-blue-100 text-blue-700 rounded font-bold text-lg">+</button>
+          </div>
           </div>
           <div className="flex justify-end space-x-3 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer font-semibold shadow-sm"
             >
               {loading ? 'Adding...' : 'Add Employee'}
             </button>

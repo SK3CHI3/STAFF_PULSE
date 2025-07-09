@@ -1,18 +1,76 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/lib/auth'
 
 export default function Settings() {
+  const { profile, loading: authLoading } = useAuth()
   const [activeTab, setActiveTab] = useState('general')
-  const [settings, setSettings] = useState({
-    companyName: 'Acme Corporation',
-    checkInFrequency: 'weekly',
-    anonymousAllowed: true,
-    reminderEnabled: true,
-    alertThreshold: 2.5,
-    workingHours: '09:00-17:00',
-    timezone: 'Africa/Nairobi'
-  })
+  const [settings, setSettings] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  // Map API fields to UI fields
+  function mapApiToUi(api: any) {
+    return {
+      companyName: api.name || '',
+      checkInFrequency: api.check_in_frequency || 'weekly',
+      anonymousAllowed: api.anonymous_allowed ?? true,
+      reminderEnabled: api.reminder_enabled ?? true,
+      alertThreshold: api.alert_threshold ?? 2.5,
+      workingHours: api.working_hours || '09:00-17:00',
+      timezone: api.timezone || 'Africa/Nairobi',
+      address: api.address || '',
+      billingEmail: api.billing_email || '',
+      email: api.email || '',
+      phone: api.phone || '',
+    }
+  }
+  function mapUiToApi(ui: any) {
+    return {
+      name: ui.companyName,
+      check_in_frequency: ui.checkInFrequency,
+      anonymous_allowed: ui.anonymousAllowed,
+      reminder_enabled: ui.reminderEnabled,
+      alert_threshold: ui.alertThreshold,
+      working_hours: ui.workingHours,
+      timezone: ui.timezone,
+      address: ui.address,
+      billing_email: ui.billingEmail,
+      email: ui.email,
+      phone: ui.phone,
+    }
+  }
+
+  // Fetch settings on mount
+  useEffect(() => {
+    async function fetchSettings() {
+      if (!profile?.organization?.id) return
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch(`/api/organization/settings?organizationId=${profile.organization.id}`)
+        const data = await res.json()
+        if (!data.success || !data.settings) {
+          setError(data.error || 'Failed to load settings')
+          setSettings(null)
+        } else {
+          setSettings(mapApiToUi(data.settings))
+        }
+      } catch (e: any) {
+        setError(e.message || 'Failed to load settings')
+        setSettings(null)
+      }
+      setLoading(false)
+    }
+    if (!authLoading && profile?.organization?.id) {
+      fetchSettings()
+    }
+  }, [authLoading, profile?.organization?.id])
 
   const tabs = [
     { id: 'general', name: 'General', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
@@ -21,6 +79,61 @@ export default function Settings() {
     { id: 'security', name: 'Security', icon: 'M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z' }
   ]
 
+  const handleSave = async () => {
+    if (!profile?.organization?.id || !settings) {
+      setError('Organization ID or settings missing. Cannot save.')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    setSuccess(null)
+    const payload = { organizationId: profile.organization.id, ...mapUiToApi(settings) }
+    // Remove organizationId from update fields for validation
+    const updateFields = { ...payload }
+    delete updateFields.organizationId
+    // Defensive: must have at least one field to update
+    if (Object.keys(updateFields).length === 0) {
+      setError('No valid fields to update. Please modify a setting before saving.')
+      setSaving(false)
+      return
+    }
+    // Log payload for debugging
+    if (typeof window !== 'undefined') {
+      // eslint-disable-next-line no-console
+      console.log('Settings Save Payload:', payload)
+    }
+    try {
+      const res = await fetch('/api/organization/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      const data = await res.json()
+      if (!data.success) {
+        setError(data.error || 'Failed to save settings')
+        setSuccess(null)
+      } else {
+        setSuccess('Settings saved successfully!')
+        setSettings(mapApiToUi(data.settings))
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to save settings')
+      setSuccess(null)
+    }
+    setSaving(false)
+  }
+
+  // Loading and error states
+  if (authLoading || loading) {
+    return <div className="flex items-center justify-center min-h-screen text-gray-500">Loading settings...</div>
+  }
+  if (error) {
+    return <div className="flex items-center justify-center min-h-screen text-red-600">{error}</div>
+  }
+  if (!settings) {
+    return <div className="flex items-center justify-center min-h-screen text-gray-500">No settings found.</div>
+  }
+
   return (
     <div className="bg-gray-50 min-h-screen">
       {/* Header */}
@@ -28,8 +141,8 @@ export default function Settings() {
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-              <p className="text-gray-600 text-sm mt-1">Manage your organization and system preferences</p>
+              <h1 className="text-2xl font-bold text-blue-700">Settings</h1>
+              <p className="text-purple-600 text-sm mt-1">Manage your organization and system preferences</p>
             </div>
           </div>
         </div>
@@ -65,26 +178,28 @@ export default function Settings() {
           {/* Main Content */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              {success && <div className="mb-4 text-green-600 font-medium">{success}</div>}
+              {error && <div className="mb-4 text-red-600 font-medium">{error}</div>}
               {activeTab === 'general' && (
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-6">General Settings</h2>
+                  <h2 className="text-lg font-semibold text-blue-700 mb-6">General Settings</h2>
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Company Name</label>
+                      <label className="block text-sm font-semibold text-blue-700 mb-2">Company Name</label>
                       <input
                         type="text"
                         value={settings.companyName}
                         onChange={(e) => setSettings({...settings, companyName: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Check-in Frequency</label>
+                      <label className="block text-sm font-semibold text-blue-700 mb-2">Check-in Frequency</label>
                       <select
                         value={settings.checkInFrequency}
                         onChange={(e) => setSettings({...settings, checkInFrequency: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       >
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
@@ -94,22 +209,22 @@ export default function Settings() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Working Hours</label>
+                      <label className="block text-sm font-semibold text-blue-700 mb-2">Working Hours</label>
                       <input
                         type="text"
                         value={settings.workingHours}
                         onChange={(e) => setSettings({...settings, workingHours: e.target.value})}
                         placeholder="09:00-17:00"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
+                      <label className="block text-sm font-semibold text-blue-700 mb-2">Timezone</label>
                       <select
                         value={settings.timezone}
                         onChange={(e) => setSettings({...settings, timezone: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       >
                         <option value="Africa/Nairobi">Africa/Nairobi (EAT)</option>
                         <option value="UTC">UTC</option>
@@ -120,8 +235,8 @@ export default function Settings() {
 
                     <div className="flex items-center justify-between">
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Allow Anonymous Responses</label>
-                        <p className="text-xs text-gray-500">Let employees submit feedback anonymously</p>
+                        <label className="text-sm font-semibold text-blue-700">Allow Anonymous Responses</label>
+                        <p className="text-xs text-purple-600">Let employees submit feedback anonymously</p>
                       </div>
                       <button
                         onClick={() => setSettings({...settings, anonymousAllowed: !settings.anonymousAllowed})}
@@ -142,12 +257,12 @@ export default function Settings() {
 
               {activeTab === 'notifications' && (
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-6">Notification Settings</h2>
+                  <h2 className="text-lg font-semibold text-blue-700 mb-6">Notification Settings</h2>
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <label className="text-sm font-medium text-gray-700">Send Reminders</label>
-                        <p className="text-xs text-gray-500">Send WhatsApp reminders for check-ins</p>
+                        <label className="text-sm font-semibold text-blue-700">Send Reminders</label>
+                        <p className="text-xs text-purple-600">Send WhatsApp reminders for check-ins</p>
                       </div>
                       <button
                         onClick={() => setSettings({...settings, reminderEnabled: !settings.reminderEnabled})}
@@ -164,7 +279,7 @@ export default function Settings() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Alert Threshold</label>
+                      <label className="block text-sm font-semibold text-blue-700 mb-2">Alert Threshold</label>
                       <input
                         type="number"
                         min="1"
@@ -172,9 +287,9 @@ export default function Settings() {
                         step="0.1"
                         value={settings.alertThreshold}
                         onChange={(e) => setSettings({...settings, alertThreshold: parseFloat(e.target.value)})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Send alerts when average mood drops below this value</p>
+                      <p className="text-xs text-purple-600 mt-1">Send alerts when average mood drops below this value</p>
                     </div>
                   </div>
                 </div>
@@ -182,7 +297,7 @@ export default function Settings() {
 
               {activeTab === 'integrations' && (
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-6">Integrations</h2>
+                  <h2 className="text-lg font-semibold text-blue-700 mb-6">Integrations</h2>
                   <div className="space-y-4">
                     <div className="p-4 border border-gray-200 rounded-lg">
                       <div className="flex items-center justify-between">
@@ -193,8 +308,8 @@ export default function Settings() {
                             </svg>
                           </div>
                           <div>
-                            <h3 className="font-medium text-gray-900">WhatsApp Business</h3>
-                            <p className="text-sm text-gray-500">Connected</p>
+                            <h3 className="font-medium text-blue-700">WhatsApp Business</h3>
+                            <p className="text-sm text-purple-600">Connected</p>
                           </div>
                         </div>
                         <span className="px-3 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
@@ -212,11 +327,11 @@ export default function Settings() {
                             </svg>
                           </div>
                           <div>
-                            <h3 className="font-medium text-gray-900">Email Notifications</h3>
-                            <p className="text-sm text-gray-500">Not configured</p>
+                            <h3 className="font-medium text-blue-700">Email Notifications</h3>
+                            <p className="text-sm text-purple-600">Not configured</p>
                           </div>
                         </div>
-                        <button className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 rounded-full hover:bg-gray-200">
+                        <button className="px-3 py-1 text-xs font-medium bg-gray-100 text-blue-700 rounded-full hover:bg-gray-200">
                           Configure
                         </button>
                       </div>
@@ -227,7 +342,7 @@ export default function Settings() {
 
               {activeTab === 'security' && (
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900 mb-6">Security Settings</h2>
+                  <h2 className="text-lg font-semibold text-blue-700 mb-6">Security Settings</h2>
                   <div className="space-y-6">
                     <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
                       <div className="flex items-start space-x-3">
@@ -235,8 +350,8 @@ export default function Settings() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <div>
-                          <h3 className="font-medium text-blue-900">Data Protection</h3>
-                          <p className="text-sm text-blue-800 mt-1">
+                          <h3 className="font-medium text-blue-700">Data Protection</h3>
+                          <p className="text-sm text-purple-600 mt-1">
                             All data is encrypted and stored securely. We comply with GDPR and local data protection laws.
                           </p>
                         </div>
@@ -244,8 +359,8 @@ export default function Settings() {
                     </div>
 
                     <div>
-                      <h3 className="font-medium text-gray-900 mb-3">Data Retention</h3>
-                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900">
+                      <h3 className="font-medium text-blue-700 mb-3">Data Retention</h3>
+                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white">
                         <option value="1year">1 Year</option>
                         <option value="2years">2 Years</option>
                         <option value="3years">3 Years</option>
@@ -254,10 +369,35 @@ export default function Settings() {
                     </div>
 
                     <div>
-                      <button className="w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors">
-                        Export All Data
+                      <button
+                        className="w-full bg-red-600 text-white py-2 px-4 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                        onClick={async () => {
+                          if (!profile?.organization?.id) return
+                          setExporting(true)
+                          setExportError(null)
+                          try {
+                            const res = await fetch(`/api/organization/export?organizationId=${profile.organization.id}`)
+                            if (!res.ok) throw new Error('Failed to export data')
+                            const blob = await res.blob()
+                            const url = window.URL.createObjectURL(blob)
+                            const a = document.createElement('a')
+                            a.href = url
+                            a.download = `organization_export_${profile.organization.id}.zip`
+                            document.body.appendChild(a)
+                            a.click()
+                            a.remove()
+                            window.URL.revokeObjectURL(url)
+                          } catch (e: any) {
+                            setExportError(e.message || 'Failed to export data')
+                          }
+                          setExporting(false)
+                        }}
+                        disabled={exporting}
+                      >
+                        {exporting ? 'Exporting...' : 'Export All Data'}
                       </button>
-                      <p className="text-xs text-gray-500 mt-2">Download all your organization's data</p>
+                      {exportError && <p className="text-xs text-red-600 mt-2">{exportError}</p>}
+                      <p className="text-xs text-purple-600 mt-2">Download all your organization's data</p>
                     </div>
                   </div>
                 </div>
@@ -265,8 +405,12 @@ export default function Settings() {
 
               {/* Save Button */}
               <div className="mt-8 pt-6 border-t border-gray-200">
-                <button className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium">
-                  Save Changes
+                <button
+                  className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </div>

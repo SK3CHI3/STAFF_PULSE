@@ -170,6 +170,118 @@ async function generateDepartmentInsights(organizationId: string, department?: s
   }
 }
 
+// Helper: Clean and extract a valid JSON array from LLM output
+function cleanLLMJsonArray(content: string): string | null {
+  // Remove markdown code blocks (```json ... ``` or ``` ... ```)
+  let cleaned = content.replace(/```json[\s\S]*?```/gi, match => match.replace(/```json|```/gi, ''))
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, match => match.replace(/```/g, ''))
+  // Extract the first [ ... ] block
+  const arrayMatch = cleaned.match(/\[[\s\S]*?\]/)
+  if (!arrayMatch) return null
+  let arrayStr = arrayMatch[0]
+  // Remove trailing commas before ] or }
+  arrayStr = arrayStr.replace(/,\s*([\]}])/g, '$1')
+  // Ensure array closes (add ] if missing)
+  const openBrackets = (arrayStr.match(/\[/g) || []).length
+  const closeBrackets = (arrayStr.match(/\]/g) || []).length
+  if (openBrackets > closeBrackets) {
+    arrayStr += ']'.repeat(openBrackets - closeBrackets)
+  }
+  return arrayStr
+}
+
+// Helper: Call OpenRouter DeepSeek LLM
+async function generateAIInsightsWithLLM({ organizationId, employees, moodData, department }: {
+  organizationId: string,
+  employees: any[],
+  moodData: any[],
+  department?: string
+}): Promise<{ insights: any[]; warning: string | null }> {
+  const apiKey = process.env.OPENROUTER_API_KEY
+  if (!apiKey) throw new Error('OpenRouter API key not set')
+
+  // Summarize org data for prompt
+  const employeeSummary = employees.map(e => `${e.first_name} ${e.last_name} (${e.department || 'Unassigned'})`).join(', ')
+  const moodSummary = moodData.map(m => `Score: ${m.mood_score}, Dept: ${m.employee?.department || 'Unknown'}, Date: ${m.created_at}`).slice(0, 50).join('\n')
+
+  // STRONGER prompt: Only emotional well-being, no absenteeism, no generic business advice
+  // ---
+  // NOTE: This prompt is designed to force the LLM to generate only brief, actionable insights about emotional well-being, mood, and engagement. It must NOT mention absenteeism, attendance, or unrelated business topics.
+  // ---
+  const prompt = `You are an HR analytics AI. Given the following organization data, generate 3-5 brief, actionable insights for HR admins.\n\nSTRICT RULES:\n- Focus ONLY on emotional well-being, mood, and engagement.\n- Do NOT mention absenteeism, attendance, time off, or unrelated business topics.\n- Do NOT give generic business or HR policy advice.\n- Each insight should be concise, actionable, and relevant for supporting team well-being.\n- Each insight must have: title, description, severity (info|warning|critical), type (trend_analysis|risk_detection|recommendation|department_insight|employee_insight), department (if relevant), and a list of action_items.\n\nEmployees: ${employeeSummary}\n\nRecent Mood Checkins (last 30d):\n${moodSummary}\n\nDepartment: ${department || 'All'}\n\nFormat:\n[ { title, description, severity, insight_type, department, action_items } ]\n\nRespond with ONLY a valid JSON array, NO explanation, NO markdown, NO comments, NO trailing commas, NO code blocks, NOTHING else. If you do not have enough data, respond with an empty array: []. If you do not follow this, your output will be discarded. Do NOT write any explanation, markdown, or text outside the array. Do NOT use markdown. Do NOT add any text before or after the array. Do NOT add comments. Do NOT add trailing commas. Do NOT add code blocks. Respond with a single valid JSON array only.`;
+
+  const body: any = {
+    model: 'deepseek/deepseek-v3-base:free',
+    messages: [
+      { role: 'system', content: 'You are an HR analytics AI that generates actionable insights for HR admins based on organization mood and employee data. Respond ONLY with a valid JSON array. If you do not have enough data, respond with []. Do NOT write any explanation, markdown, or text outside the array.' },
+      { role: 'user', content: prompt }
+    ]
+  }
+  // Try to use stop sequence if supported
+  body.stop = [']']
+
+  // Log the outgoing request
+  console.log('[OpenRouter] Sending request:', JSON.stringify(body, null, 2))
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://staffpulse.ai/', // Optional, for leaderboard
+      'X-Title': 'StaffPulse HR Platform' // Optional, for leaderboard
+    },
+    body: JSON.stringify(body)
+  })
+  // Log the response status
+  console.log('[OpenRouter] Response status:', response.status)
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('[OpenRouter] API error:', errorText)
+    throw new Error('OpenRouter API error: ' + errorText)
+  }
+  const data = await response.json()
+  // Log the raw response
+  console.log('[OpenRouter] Response data:', JSON.stringify(data, null, 2))
+  const content = data.choices?.[0]?.message?.content
+  if (!content) throw new Error('No content from LLM')
+  // Try to parse JSON from LLM response
+  let insights = []
+  try {
+    // Clean and extract the JSON array
+    const cleaned = cleanLLMJsonArray(content)
+    if (!cleaned) {
+      // If no array found, log and return empty array with warning
+      console.error('[OpenRouter] No JSON array found in LLM response. Raw content:', content)
+      return { insights: [], warning: 'LLM did not return a JSON array. Raw output logged.' }
+    }
+    insights = JSON.parse(cleaned)
+    if (!Array.isArray(insights)) throw new Error('LLM did not return a JSON array')
+  } catch (e) {
+    console.error('[OpenRouter] Failed to parse LLM response as JSON. Raw content:', content)
+    // Try to log the cleaned version too
+    try {
+      const cleaned = cleanLLMJsonArray(content)
+      if (cleaned) {
+        console.error('[OpenRouter] Cleaned JSON candidate:', cleaned)
+      }
+    } catch {}
+    let errMsg = 'Failed to parse LLM response as JSON.'
+    if (e && typeof e === 'object' && 'message' in e) {
+      errMsg += ' ' + (e as Error).message
+    }
+    // Instead of throwing, return empty array and warning
+    return { insights: [], warning: errMsg + ' Raw output logged.' }
+  }
+  // Add required fields for DB
+  return { insights: insights.map((insight: any) => ({
+    organization_id: organizationId,
+    ...insight,
+    data_points: JSON.stringify(insight.data_points || {}),
+    action_items: JSON.stringify(insight.action_items || [])
+  })), warning: null }
+}
+
 // API endpoint to get AI insights
 export async function GET(request: NextRequest) {
   try {
@@ -221,37 +333,61 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
     }
 
-    // Generate new insights
-    const insights = await generateDepartmentInsights(organizationId, department)
+    // Fetch org data for LLM
+    const [empRes, moodRes] = await Promise.all([
+      supabaseAdmin.from('employees').select('*').eq('organization_id', organizationId),
+      supabaseAdmin.from('mood_checkins').select('*, employee:employees(first_name, last_name, department)').eq('organization_id', organizationId).gte('created_at', new Date(Date.now() - 30*24*60*60*1000).toISOString())
+    ])
+    const employees = empRes.data || []
+    const moodData = moodRes.data || []
+
+    // Short-circuit: Not enough data to generate insights
+    if (employees.length < 3 || moodData.length < 5) {
+      return NextResponse.json({
+        success: true,
+        generated: 0,
+        usedLLM: false,
+        warning: 'Not enough data to generate insights. Add more employees and check-ins.'
+      })
+    }
+
+    let result: { insights: any[], warning: string | null } = { insights: [], warning: null }
+    let usedLLM = false
+    try {
+      result = await generateAIInsightsWithLLM({ organizationId, employees, moodData, department })
+      usedLLM = true
+    } catch (e: any) {
+      // Log and propagate the error to the client
+      console.error('[AI Insights] LLM insight generation failed:', e)
+      return NextResponse.json({ error: 'LLM insight generation failed: ' + e.message }, { status: 500 })
+    }
 
     // Insert new insights into database
-    if (insights.length > 0) {
-      const insightsToInsert = insights.map(insight => ({
-        organization_id: organizationId,
-        ...insight,
-        data_points: JSON.stringify(insight.data_points),
-        action_items: JSON.stringify(insight.action_items)
-      }))
-
+    if (Array.isArray(result.insights) && result.insights.length > 0) {
       const { error: insertError } = await supabaseAdmin
         .from('ai_insights')
-        .insert(insightsToInsert)
-
+        .insert(result.insights)
       if (insertError) {
         console.error('Error inserting insights:', insertError)
         return NextResponse.json({ error: 'Failed to save insights' }, { status: 500 })
       }
     }
+    // If no valid insights, return success with warning
+    if (!Array.isArray(result.insights) || result.insights.length === 0) {
+      return NextResponse.json({ success: true, generated: 0, usedLLM, warning: result.warning || 'No valid insights generated by LLM.' })
+    }
 
     return NextResponse.json({ 
       success: true, 
-      generated: insights.length,
-      insights 
+      generated: result.insights.length,
+      usedLLM,
+      warning: result.warning,
+      insights: result.insights 
     })
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('API error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Internal server error: ' + error.message }, { status: 500 })
   }
 }
 

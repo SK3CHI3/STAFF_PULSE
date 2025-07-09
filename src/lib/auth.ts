@@ -232,6 +232,22 @@ export function useAuth() {
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
+  // Add a method to force-refresh the profile
+  const refreshProfile = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/profile')
+      const data = await res.json()
+      if (data.profile) {
+        setProfile(data.profile)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('profile', JSON.stringify(data.profile))
+        }
+      }
+    } catch {}
+    setLoading(false)
+  }
+
   useEffect(() => {
     // Get initial session
     const getInitialSession = async () => {
@@ -267,10 +283,23 @@ export function useAuth() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // After successful login, always fetch profile
+  useEffect(() => {
+    if (user && !profile && !loading) {
+      refreshProfile()
+    }
+  }, [user])
+
   return {
     user,
     profile,
     loading,
-    signOut: () => signOut()
+    signUp,
+    signIn,
+    signOut,
+    resetPassword,
+    signInWithGoogle,
+    signInWithFacebook,
+    refreshProfile,
   }
 }

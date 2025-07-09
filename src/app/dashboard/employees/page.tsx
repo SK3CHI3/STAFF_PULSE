@@ -20,8 +20,9 @@ interface Employee {
 }
 
 interface Department {
-  name: string
-  count: number
+  id: string;
+  name: string;
+  count?: number;
 }
 
 export default function Employees() {
@@ -30,8 +31,10 @@ export default function Employees() {
   const [selectedStatus, setSelectedStatus] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
+  const [showDeptModal, setShowDeptModal] = useState(false)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
+  const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [profile, setProfile] = useState<any>(null)
@@ -66,47 +69,74 @@ export default function Employees() {
     }
   }, [])
 
-  // MOCK DATA for employees and departments
+  // Fetch departments from API
+  const fetchDepartments = async () => {
+    if (!profile?.organization?.id) return;
+    setDepartmentsLoading(true);
+    try {
+      const res = await fetch(`/api/departments?organizationId=${profile.organization.id}`);
+      const result = await res.json();
+      if (result.success) {
+      // Add count by counting employees in each department
+      const deptList: Department[] = (result.departments || []).map((d: any) => ({ id: d.id, name: d.name, count: 0 }));
+      setDepartments(deptList);
+    } else {
+      setDepartments([]);
+    }
+  } catch {
+    setDepartments([]);
+  } finally {
+    setDepartmentsLoading(false);
+  }
+};
+
+  // Fetch employees and departments from API
+  const fetchEmployees = async () => {
+    if (!profile?.organization?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      let url = `/api/employees?organizationId=${profile.organization.id}`;
+      if (selectedDepartment && selectedDepartment !== 'all') {
+        url += `&department=${encodeURIComponent(selectedDepartment)}`;
+      }
+      if (selectedStatus && selectedStatus !== 'all') {
+        url += `&status=${encodeURIComponent(selectedStatus)}`;
+      }
+      const res = await fetch(url);
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to fetch employees');
+      setEmployees(result.employees || []);
+    } catch (err: any) {
+      setError(err.message || 'Failed to fetch employees');
+    } finally {
+      setLoading(false);
+    }
+    await fetchDepartments();
+  };
+
+  // Recalculate department counts whenever employees or departments change
   useEffect(() => {
-    setLoading(true)
-    setTimeout(() => {
-      setEmployees([
-        {
-          id: '1',
-          first_name: 'Alice',
-          last_name: 'Johnson',
-          email: 'alice@example.com',
-          phone: '+254700000001',
-          department: 'Engineering',
-          position: 'Developer',
-          is_active: true,
-          created_at: '2024-01-01',
-          last_response: '2024-07-01',
-          avg_mood: 4.5,
-          response_count: 12
-        },
-        {
-          id: '2',
-          first_name: 'Bob',
-          last_name: 'Smith',
-          email: 'bob@example.com',
-          phone: '+254700000002',
-          department: 'Design',
-          position: 'Designer',
-          is_active: false,
-          created_at: '2024-01-02',
-          last_response: '2024-06-28',
-          avg_mood: 3.8,
-          response_count: 8
-        }
-      ])
-      setDepartments([
-        { name: 'Engineering', count: 1 },
-        { name: 'Design', count: 1 }
-      ])
-      setLoading(false)
-    }, 500)
-  }, [])
+    if (!departments.length) return;
+    // Use the full employees list, not filteredEmployees
+    const deptCountMap: Record<string, number> = {};
+    employees.forEach((emp: any) => {
+      if (emp.department) {
+        const deptKey = emp.department.trim().toLowerCase();
+        deptCountMap[deptKey] = (deptCountMap[deptKey] || 0) + 1;
+      }
+    });
+    setDepartments(prev => prev.map(d => {
+      const deptKey = d.name.trim().toLowerCase();
+      return { ...d, count: deptCountMap[deptKey] || 0 };
+    }));
+  }, [employees, departments.length]);
+
+  // Fetch employees when filters or profile change
+  useEffect(() => {
+    fetchEmployees();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile, selectedDepartment, selectedStatus]);
 
   // Filter employees
   const filteredEmployees = employees.filter(employee => {
@@ -144,43 +174,7 @@ export default function Employees() {
           <button
             onClick={() => {
               setLoading(true)
-              setTimeout(() => {
-                setEmployees([
-                  {
-                    id: '1',
-                    first_name: 'Alice',
-                    last_name: 'Johnson',
-                    email: 'alice@example.com',
-                    phone: '+254700000001',
-                    department: 'Engineering',
-                    position: 'Developer',
-                    is_active: true,
-                    created_at: '2024-01-01',
-                    last_response: '2024-07-01',
-                    avg_mood: 4.5,
-                    response_count: 12
-                  },
-                  {
-                    id: '2',
-                    first_name: 'Bob',
-                    last_name: 'Smith',
-                    email: 'bob@example.com',
-                    phone: '+254700000002',
-                    department: 'Design',
-                    position: 'Designer',
-                    is_active: false,
-                    created_at: '2024-01-02',
-                    last_response: '2024-06-28',
-                    avg_mood: 3.8,
-                    response_count: 8
-                  }
-                ])
-                setDepartments([
-                  { name: 'Engineering', count: 1 },
-                  { name: 'Design', count: 1 }
-                ])
-                setLoading(false)
-              }, 500)
+              fetchEmployees()
             }}
             className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
           >
@@ -190,6 +184,15 @@ export default function Employees() {
       </div>
     )
   }
+
+  const handleAddSuccess = () => {
+    setShowAddModal(false);
+    fetchEmployees();
+  };
+  const handleImportSuccess = () => {
+    setShowImportModal(false);
+    fetchEmployees();
+  };
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -207,7 +210,7 @@ export default function Employees() {
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => setShowAddModal(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2"
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2 cursor-pointer"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
@@ -224,45 +227,18 @@ export default function Employees() {
                 <span>Import CSV</span>
               </button>
               <button
+                onClick={() => setShowDeptModal(true)}
+                className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center space-x-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                <span>Create Department</span>
+              </button>
+              <button
                 onClick={() => {
                   setLoading(true)
-                  setTimeout(() => {
-                    setEmployees([
-                      {
-                        id: '1',
-                        first_name: 'Alice',
-                        last_name: 'Johnson',
-                        email: 'alice@example.com',
-                        phone: '+254700000001',
-                        department: 'Engineering',
-                        position: 'Developer',
-                        is_active: true,
-                        created_at: '2024-01-01',
-                        last_response: '2024-07-01',
-                        avg_mood: 4.5,
-                        response_count: 12
-                      },
-                      {
-                        id: '2',
-                        first_name: 'Bob',
-                        last_name: 'Smith',
-                        email: 'bob@example.com',
-                        phone: '+254700000002',
-                        department: 'Design',
-                        position: 'Designer',
-                        is_active: false,
-                        created_at: '2024-01-02',
-                        last_response: '2024-06-28',
-                        avg_mood: 3.8,
-                        response_count: 8
-                      }
-                    ])
-                    setDepartments([
-                      { name: 'Engineering', count: 1 },
-                      { name: 'Design', count: 1 }
-                    ])
-                    setLoading(false)
-                  }, 500)
+                  fetchEmployees()
                 }}
                 className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
                 title="Refresh"
@@ -275,6 +251,21 @@ export default function Employees() {
           </div>
         </div>
       </header>
+
+      {/* Department Summary Cards - moved here */}
+      {departments.length > 0 && (
+        <div className="px-6 pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {departments.map(dept => (
+              <div key={dept.name} className="bg-white p-4 rounded-lg border border-gray-100">
+                <h3 className="font-medium text-gray-900">{dept.name}</h3>
+                <p className="text-2xl font-bold text-blue-600 mt-1">{dept.count}</p>
+                <p className="text-sm text-gray-500">employees</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Content */}
       <main className="p-4">
@@ -465,54 +456,16 @@ export default function Employees() {
             </table>
           </div>
         </div>
-
-        {/* Department Summary Cards */}
-        {departments.length > 0 && (
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {departments.map(dept => (
-              <div key={dept.name} className="bg-white p-4 rounded-lg border border-gray-100">
-                <h3 className="font-medium text-gray-900">{dept.name}</h3>
-                <p className="text-2xl font-bold text-blue-600 mt-1">{dept.count}</p>
-                <p className="text-sm text-gray-500">employees</p>
-              </div>
-            ))}
-          </div>
-        )}
       </main>
 
       {/* Add Employee Modal */}
       {showAddModal && (
         <AddEmployeeModal
           onClose={() => setShowAddModal(false)}
-          onSuccess={() => {
-            setShowAddModal(false)
-            setLoading(true)
-            setTimeout(() => {
-              setEmployees([
-                ...employees,
-                {
-                  id: (employees.length + 1).toString(),
-                  first_name: 'New',
-                  last_name: 'Employee',
-                  email: 'new@example.com',
-                  phone: '+254700000000',
-                  department: 'New',
-                  position: 'New',
-                  is_active: true,
-                  created_at: new Date().toISOString(),
-                  last_response: new Date().toISOString(),
-                  avg_mood: 4.5,
-                  response_count: 1
-                }
-              ])
-              setDepartments([
-                ...departments,
-                { name: 'New', count: 1 }
-              ])
-              setLoading(false)
-            }, 500)
-          }}
-          organizationId={profile?.organization_id}
+          onSuccess={handleAddSuccess}
+          organizationId={profile?.organization?.id}
+          departments={departments}
+          fetchDepartments={fetchDepartments}
         />
       )}
 
@@ -520,35 +473,17 @@ export default function Employees() {
       {showImportModal && (
         <ImportEmployeesModal
           onClose={() => setShowImportModal(false)}
-          onSuccess={() => {
-            setShowImportModal(false)
-            setLoading(true)
-            setTimeout(() => {
-              setEmployees([
-                ...employees,
-                {
-                  id: (employees.length + 1).toString(),
-                  first_name: 'New',
-                  last_name: 'Employee',
-                  email: 'new@example.com',
-                  phone: '+254700000000',
-                  department: 'New',
-                  position: 'New',
-                  is_active: true,
-                  created_at: new Date().toISOString(),
-                  last_response: new Date().toISOString(),
-                  avg_mood: 4.5,
-                  response_count: 1
-                }
-              ])
-              setDepartments([
-                ...departments,
-                { name: 'New', count: 1 }
-              ])
-              setLoading(false)
-            }, 500)
-          }}
-          organizationId={profile?.organization_id}
+          onSuccess={handleImportSuccess}
+          organizationId={profile?.organization?.id}
+        />
+      )}
+
+      {/* Department Modal */}
+      {showDeptModal && (
+        <CreateDepartmentModal
+          onClose={() => setShowDeptModal(false)}
+          onSuccess={() => { setShowDeptModal(false); fetchDepartments(); }}
+          organizationId={profile?.organization?.id}
         />
       )}
     </div>
@@ -556,11 +491,7 @@ export default function Employees() {
 }
 
 // Add Employee Modal Component
-function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
-  onClose: () => void
-  onSuccess: () => void
-  organizationId?: string
-}) {
+function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fetchDepartments }: { onClose: () => void; onSuccess: () => void; organizationId?: string; departments: Department[]; fetchDepartments: () => void }) {
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -571,6 +502,17 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showDeptModal, setShowDeptModal] = useState(false);
+
+  useEffect(() => {
+    if (organizationId) {
+      fetch(`/api/departments?organizationId=${organizationId}`)
+        .then(res => res.json())
+        .then(result => {
+          // No-op: departments are managed by parent and passed as prop
+        });
+    }
+  }, [organizationId, showDeptModal]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -599,8 +541,8 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+    <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg">
         <h2 className="text-lg font-semibold mb-4">Add New Employee</h2>
 
         {error && (
@@ -612,7 +554,7 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-800 mb-1">
                 First Name *
               </label>
               <input
@@ -620,11 +562,11 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
                 required
                 value={formData.first_name}
                 onChange={(e) => setFormData({...formData, first_name: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-gray-800 mb-1">
                 Last Name *
               </label>
               <input
@@ -632,25 +574,25 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
                 required
                 value={formData.last_name}
                 onChange={(e) => setFormData({...formData, last_name: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-800 mb-1">
               Email
             </label>
             <input
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-800 mb-1">
               WhatsApp Phone Number *
             </label>
             <input
@@ -659,34 +601,28 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
               placeholder="+254712345678"
               value={formData.phone}
               onChange={(e) => setFormData({...formData, phone: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-800 mb-1">
               Department
             </label>
-            <input
-              type="text"
-              value={formData.department}
-              onChange={(e) => setFormData({...formData, department: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <div className="flex gap-2">
+              <select
+                value={formData.department}
+                onChange={e => setFormData({ ...formData, department: e.target.value })}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
+              >
+                <option value="">Select department</option>
+                {departments.map(dept => (
+                  <option key={dept.id} value={dept.name}>{dept.name}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setShowDeptModal(true)} className="px-2 py-1 bg-blue-100 text-blue-700 rounded">+</button>
+            </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Position
-            </label>
-            <input
-              type="text"
-              value={formData.position}
-              onChange={(e) => setFormData({...formData, position: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
           <div className="flex justify-end space-x-3 pt-4">
             <button
               type="button"
@@ -698,12 +634,19 @@ function AddEmployeeModal({ onClose, onSuccess, organizationId }: {
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
             >
               {loading ? 'Adding...' : 'Add Employee'}
             </button>
           </div>
         </form>
+        {showDeptModal && (
+          <CreateDepartmentModal
+            onClose={() => setShowDeptModal(false)}
+            onSuccess={() => { setShowDeptModal(false); fetchDepartments(); }}
+            organizationId={organizationId}
+          />
+        )}
       </div>
     </div>
   )
@@ -812,8 +755,8 @@ function ImportEmployeesModal({ onClose, onSuccess, organizationId }: {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-semibold">Import Employees</h2>
           <button
@@ -1001,4 +944,52 @@ function ImportEmployeesModal({ onClose, onSuccess, organizationId }: {
       </div>
     </div>
   )
+}
+
+// CreateDepartmentModal component
+function CreateDepartmentModal({ onClose, onSuccess, organizationId }: { onClose: () => void; onSuccess: () => void; organizationId?: string }) {
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!organizationId || !name.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ organizationId, name: name.trim() })
+      });
+      const result = await res.json();
+      if (result.success) {
+        onSuccess();
+      } else {
+        setError(result.error || 'Failed to create department');
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to create department');
+    } finally {
+      setLoading(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg">
+        <h2 className="text-lg font-semibold mb-4">Create Department</h2>
+        {error && <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">{error}</div>}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-800 mb-1">Department Name *</label>
+            <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400" />
+          </div>
+          <div className="flex justify-end space-x-3 pt-4">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+            <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{loading ? 'Creating...' : 'Create'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }

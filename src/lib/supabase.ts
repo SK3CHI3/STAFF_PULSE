@@ -5,6 +5,10 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
 // Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('❌ [Supabase] Missing environment variables:', {
+    url: supabaseUrl ? 'SET' : 'MISSING',
+    key: supabaseAnonKey ? 'SET' : 'MISSING'
+  })
   throw new Error(
     'Missing Supabase environment variables. Please check your .env.local file.\n' +
     `NEXT_PUBLIC_SUPABASE_URL: ${supabaseUrl ? 'SET' : 'MISSING'}\n` +
@@ -13,9 +17,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 console.log('🔗 [Supabase] Initializing client with URL:', supabaseUrl)
+console.log('🔗 [Supabase] Environment check passed')
 
 // Client-side Supabase client (for use in client components)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+console.log('✅ [Supabase] Client initialized successfully')
 
 // Client component Supabase client (for auth helpers)
 export const createSupabaseClient = () => {

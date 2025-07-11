@@ -241,30 +241,55 @@ export function useAuth() {
 
   // Add a method to force-refresh the profile
   const refreshProfile = async () => {
-    if (loading) return // Prevent multiple simultaneous calls
+    if (loading) {
+      console.log('🔄 [Auth] Profile refresh already in progress')
+      return // Prevent multiple simultaneous calls
+    }
 
+    console.log('🔄 [Auth] Starting profile refresh...')
     setLoading(true)
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+      const timeoutId = setTimeout(() => {
+        console.log('⏰ [Auth] Profile API timeout - aborting request')
+        controller.abort()
+      }, 10000) // 10 second timeout
 
+      console.log('📡 [Auth] Fetching profile from API...')
       const res = await fetch('/api/profile', {
         signal: controller.signal
       })
       clearTimeout(timeoutId)
 
+      console.log('📡 [Auth] Profile API response status:', res.status)
+
+      if (!res.ok) {
+        console.error('❌ [Auth] Profile API error:', res.status, res.statusText)
+        throw new Error(`Profile API returned ${res.status}`)
+      }
+
       const data = await res.json()
+      console.log('✅ [Auth] Profile API response data:', data)
 
       if (data.profile) {
+        console.log('👤 [Auth] Setting profile:', {
+          id: data.profile.id,
+          email: data.profile.email,
+          hasOrg: !!data.profile.organization?.id,
+          orgId: data.profile.organization?.id
+        })
         setProfile(data.profile)
         if (typeof window !== 'undefined') {
           localStorage.setItem('profile', JSON.stringify(data.profile))
         }
+      } else {
+        console.warn('⚠️ [Auth] No profile in API response:', data)
       }
     } catch (error) {
-      console.error('Profile refresh failed:', error)
+      console.error('❌ [Auth] Profile refresh failed:', error)
     }
     setLoading(false)
+    console.log('🔄 [Auth] Profile refresh completed')
   }
 
   useEffect(() => {
@@ -273,25 +298,44 @@ export function useAuth() {
     // Get initial session
     const getInitialSession = async () => {
       try {
+        console.log('🔐 [Auth] Getting initial session...')
         const { data: { session } } = await supabase.auth.getSession()
 
-        if (!isMounted) return
+        if (!isMounted) {
+          console.log('🔐 [Auth] Component unmounted, skipping session setup')
+          return
+        }
+
+        console.log('🔐 [Auth] Initial session:', {
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          userId: session?.user?.id
+        })
 
         setUser(session?.user ?? null)
 
         if (session?.user) {
+          console.log('🔐 [Auth] User found, fetching profile...')
           const { data: profileData } = await getUserProfile(session.user.id)
           if (isMounted) {
+            console.log('🔐 [Auth] Profile fetched:', {
+              hasProfile: !!profileData,
+              profileId: profileData?.id,
+              hasOrg: !!profileData?.organization?.id
+            })
             setProfile(profileData)
           }
+        } else {
+          console.log('🔐 [Auth] No user in session')
         }
 
         if (isMounted) {
+          console.log('🔐 [Auth] Initial auth setup complete')
           setLoading(false)
           setInitialized(true)
         }
       } catch (error) {
-        console.error('Error getting initial session:', error)
+        console.error('❌ [Auth] Error getting initial session:', error)
         if (isMounted) {
           setLoading(false)
           setInitialized(true)
@@ -304,16 +348,32 @@ export function useAuth() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (!isMounted) return
+        console.log('🔐 [Auth] Auth state change:', {
+          event,
+          hasSession: !!session,
+          hasUser: !!session?.user,
+          userId: session?.user?.id
+        })
+
+        if (!isMounted) {
+          console.log('🔐 [Auth] Component unmounted, ignoring auth change')
+          return
+        }
 
         setUser(session?.user ?? null)
 
         if (session?.user) {
+          console.log('🔐 [Auth] Auth change - fetching profile for user:', session.user.id)
           const { data: profileData } = await getUserProfile(session.user.id)
           if (isMounted) {
+            console.log('🔐 [Auth] Auth change - profile fetched:', {
+              hasProfile: !!profileData,
+              hasOrg: !!profileData?.organization?.id
+            })
             setProfile(profileData)
           }
         } else {
+          console.log('🔐 [Auth] Auth change - no user, clearing profile')
           setProfile(null)
         }
 

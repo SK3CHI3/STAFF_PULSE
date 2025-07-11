@@ -12,6 +12,21 @@ import { setHours, setMinutes } from 'date-fns';
 
 function Dashboard() {
   const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+
+  console.log('📊 [Dashboard] Component render:', {
+    authState,
+    hasProfile: !!profile,
+    isAuthenticated,
+    needsAuth,
+    needsOrg,
+    orgId: profile?.organization?.id,
+    profileData: profile ? {
+      id: profile.id,
+      email: profile.email,
+      organization_id: profile.organization_id,
+      organization: profile.organization
+    } : null
+  })
   const [loading, setLoading] = useState(false)
   const [timeRange, setTimeRange] = useState('30d')
   const [showCheckinModal, setShowCheckinModal] = useState(false)
@@ -60,16 +75,7 @@ function Dashboard() {
   // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   useEffect(() => { setHasHydrated(true) }, [])
 
-  // Add loading timeout to prevent endless loading
-  useEffect(() => {
-    if (loading) {
-      const timeout = setTimeout(() => {
-        setLoading(false)
-        console.warn('Dashboard loading timeout - forcing completion')
-      }, 15000) // 15 second timeout
-      return () => clearTimeout(timeout)
-    }
-  }, [loading])
+
 
   // Fetch employee stats (total, avg mood, response rate)
   const fetchEmployeeStats = useCallback(async (orgId: string) => {
@@ -216,36 +222,65 @@ function Dashboard() {
   }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
 
   // Load dashboard data function
-  const loadDashboardData = useCallback(async () => {
-    const orgId = profile?.organization?.id;
-    if (!orgId || loading) return // Prevent multiple simultaneous calls
+  const loadDashboardData = useCallback(async (orgId?: string) => {
+    // Use passed orgId or get from current profile
+    const organizationId = orgId || profile?.organization?.id;
+    console.log('📊 [Dashboard] Loading dashboard data for org:', organizationId)
+
+    if (!organizationId) {
+      console.warn('📊 [Dashboard] No organization ID available')
+      return
+    }
+
+    if (loading) {
+      console.log('📊 [Dashboard] Already loading, skipping')
+      return // Prevent multiple simultaneous calls
+    }
+
     setLoading(true)
     try {
+      console.log('📊 [Dashboard] Starting data fetch operations...')
       // Use Promise.allSettled to prevent one failure from stopping others
       const results = await Promise.allSettled([
-        fetchEmployeeStats(orgId),
-        fetchAlerts(orgId),
-        fetchRecentResponses(orgId),
-        fetchMoodTrends(orgId)
+        fetchEmployeeStats(organizationId),
+        fetchAlerts(organizationId),
+        fetchRecentResponses(organizationId),
+        fetchMoodTrends(organizationId)
       ])
 
       // Log any failures but don't crash
+      const operations = ['Employee Stats', 'Alerts', 'Recent Responses', 'Mood Trends']
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
-          console.warn(`Dashboard data fetch ${index} failed:`, result.reason)
+          console.error(`📊 [Dashboard] ${operations[index]} failed:`, result.reason)
+        } else {
+          console.log(`📊 [Dashboard] ${operations[index]} loaded successfully`)
         }
       })
+
+      console.log('📊 [Dashboard] All data fetch operations completed')
     } catch (error) {
-      console.error('Error loading dashboard data:', error)
+      console.error('📊 [Dashboard] Error loading dashboard data:', error)
     } finally {
       setLoading(false)
     }
-  }, [fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends, loading]);
+  }, [fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends]);
 
   // Load dashboard data when profile is available - SINGLE useEffect
   useEffect(() => {
-    if (profile?.organization?.id && !loading) {
-      loadDashboardData()
+    const orgId = profile?.organization?.id;
+    console.log('📊 [Dashboard] useEffect triggered:', {
+      hasProfile: !!profile,
+      hasOrg: !!orgId,
+      orgId: orgId,
+      loading
+    })
+
+    if (orgId) {
+      console.log('📊 [Dashboard] Conditions met, loading dashboard data')
+      loadDashboardData(orgId) // Pass orgId explicitly
+    } else {
+      console.log('📊 [Dashboard] Conditions not met for loading data')
     }
   }, [profile?.organization?.id]);
 

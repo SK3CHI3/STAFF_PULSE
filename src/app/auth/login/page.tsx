@@ -14,21 +14,30 @@ export default function Login() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('📝 [Login] Form submitted with email:', email)
     setIsLoading(true)
 
     try {
+      console.log('📝 [Login] Calling signIn function...')
       const { error } = await signIn({ email, password })
+      console.log('📝 [Login] SignIn response:', { error: error?.message })
+
       if (error) {
+        console.error('📝 [Login] Sign-in error:', error)
         alert(error.message)
       } else {
+        console.log('📝 [Login] Sign-in successful, refreshing profile...')
         // Immediately refresh profile after login
         await refreshProfile()
+        console.log('📝 [Login] Profile refreshed, redirecting to dashboard...')
         // Redirect to dashboard
         window.location.href = '/dashboard'
       }
     } catch (err: any) {
+      console.error('📝 [Login] Unexpected error:', err)
       alert(err.message || 'Login failed')
     } finally {
+      console.log('📝 [Login] Setting loading to false')
       setIsLoading(false)
     }
   }

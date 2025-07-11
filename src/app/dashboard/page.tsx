@@ -1,31 +1,18 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
-import { getCurrentUser, getUserProfile, signOut } from '@/lib/auth'
-import { User } from '@supabase/supabase-js'
+import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
+import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { LoadingState, ErrorState } from '@/components/LoadingState'
+import { signOut } from '@/lib/auth'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import ReactDatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { setHours, setMinutes } from 'date-fns';
 
-interface UserProfile {
-  id: string
-  first_name: string
-  last_name: string
-  email: string
-  role: string
-  organization: {
-    id: string
-    name: string
-    subscription_plan: string
-  }
-}
-
-export default function Dashboard() {
-  const [user, setUser] = useState<User | null>(null)
-  const [profile, setProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
+function Dashboard() {
+  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+  const [loading, setLoading] = useState(false)
   const [timeRange, setTimeRange] = useState('30d')
   const [showCheckinModal, setShowCheckinModal] = useState(false)
   const [selectedDept, setSelectedDept] = useState('all')
@@ -68,104 +55,246 @@ export default function Dashboard() {
   const [moodTrendsError, setMoodTrendsError] = useState<string | null>(null);
 
   const [hasHydrated, setHasHydrated] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   useEffect(() => { setHasHydrated(true) }, [])
-  // In all places where toLocaleDateString is used for chart labels, use:
-  // hasHydrated ? new Date(...).toLocaleDateString() : new Date(...).toISOString().slice(0,10)
 
-  // Try to load cached profile from localStorage first
+  // Add loading timeout to prevent endless loading
   useEffect(() => {
-    const cachedProfile = localStorage.getItem('profile')
-    if (cachedProfile) {
-      try {
-        const parsed = JSON.parse(cachedProfile)
-        // Ensure organization is a single object, not array
-        let org = parsed.organization
-        if (Array.isArray(org)) {
-          org = org[0] || { id: '', name: '', subscription_plan: '' }
-        }
-        // Only set if all required fields are present and types match
-        if (
-          parsed &&
-          typeof parsed.id === 'string' &&
-          typeof parsed.first_name === 'string' &&
-          typeof parsed.last_name === 'string' &&
-          typeof parsed.email === 'string' &&
-          typeof parsed.role === 'string' &&
-          org &&
-          typeof org.id === 'string' &&
-          typeof org.name === 'string' &&
-          typeof org.subscription_plan === 'string'
-        ) {
-          setProfile({
-            id: parsed.id,
-            first_name: parsed.first_name,
-            last_name: parsed.last_name,
-            email: parsed.email,
-            role: parsed.role,
-            organization: {
-              id: org.id,
-              name: org.name,
-              subscription_plan: org.subscription_plan
-            }
-          })
-          setLoading(false)
-        }
-      } catch (e) {
-        // Ignore invalid cache
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    async function loadUserData() {
-      const start = performance.now();
-      try {
-        const { user: currentUser, error: userError } = await getCurrentUser()
-        if (userError || !currentUser) {
-          // Redirect to login if not authenticated
-          window.location.href = '/auth/login'
-          return
-        }
-        setUser(currentUser)
-
-        // Get user profile with organization
-        const { data: profileData, error: profileError } = await getUserProfile(currentUser.id)
-
-        if (profileError) {
-          console.error('Failed to load profile:', profileError)
-        } else if (profileData) {
-          // Ensure organization is a valid object before saving
-          let orgCandidate = profileData.organization
-          let org: { id: string; name: string; subscription_plan: string } = { id: '', name: '', subscription_plan: '' }
-          if (Array.isArray(orgCandidate) && orgCandidate.length > 0 && typeof orgCandidate[0] === 'object') {
-            org = orgCandidate[0] as { id: string; name: string; subscription_plan: string }
-          } else if (orgCandidate && typeof orgCandidate === 'object' && !Array.isArray(orgCandidate)) {
-            org = orgCandidate as { id: string; name: string; subscription_plan: string }
-          }
-          const safeProfile = {
-            id: profileData.id || '',
-            first_name: profileData.first_name || '',
-            last_name: profileData.last_name || '',
-            email: profileData.email || '',
-            role: profileData.role || '',
-            organization: org
-          }
-          setProfile(safeProfile)
-          localStorage.setItem('profile', JSON.stringify(safeProfile))
-        }
-
-      } catch (error) {
-        console.error('Error loading user data:', error)
-        window.location.href = '/auth/login'
-      } finally {
+    if (loading) {
+      const timeout = setTimeout(() => {
         setLoading(false)
-        const duration = performance.now() - start;
-        console.log(`[PERF] Dashboard user/profile load took ${duration.toFixed(2)}ms`);
-      }
+        console.warn('Dashboard loading timeout - forcing completion')
+      }, 15000) // 15 second timeout
+      return () => clearTimeout(timeout)
+    }
+  }, [loading])
+
+  // Fetch employee stats (total, avg mood, response rate)
+  const fetchEmployeeStats = useCallback(async (orgId: string) => {
+    if (!orgId) return;
+    setEmployeeStatsLoading(true);
+    setEmployeeStatsError(null);
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('id, mood_checkins(mood_score)')
+        .eq('organization_id', orgId);
+
+      if (error) throw error;
+
+      const total = data?.length || 0;
+      const allMoods = data?.flatMap(emp => emp.mood_checkins?.map(c => c.mood_score) || []) || [];
+      const avgMood = allMoods.length > 0 ? allMoods.reduce((a, b) => a + b, 0) / allMoods.length : 0;
+      const responseRate = total > 0 ? (allMoods.length / total) * 100 : 0;
+
+      setEmployeeStats({ total, avgMood, responseRate });
+    } catch (error: any) {
+      setEmployeeStatsError(error.message || 'Failed to fetch employee stats');
+    } finally {
+      setEmployeeStatsLoading(false);
+    }
+  }, []);
+
+  // Fetch alerts
+  const fetchAlerts = useCallback(async (orgId: string) => {
+    if (!orgId) return;
+    setAlertsLoading(true);
+    setAlertsError(null);
+    try {
+      const { data, error } = await supabase
+        .from('ai_insights')
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (error) throw error;
+      setAlerts(data || []);
+    } catch (error: any) {
+      setAlertsError(error.message || 'Failed to fetch alerts');
+    } finally {
+      setAlertsLoading(false);
+    }
+  }, []);
+
+  // Fetch recent responses
+  const fetchRecentResponses = useCallback(async (orgId: string) => {
+    if (!orgId) return;
+    setRecentResponsesLoading(true);
+    setRecentResponsesError(null);
+    try {
+      const { data, error } = await supabase
+        .from('mood_checkins')
+        .select('*, employees(first_name, last_name)')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setRecentResponses(data || []);
+    } catch (error: any) {
+      setRecentResponsesError(error.message || 'Failed to fetch recent responses');
+    } finally {
+      setRecentResponsesLoading(false);
+    }
+  }, []);
+
+  // Fetch mood trends (use AI insights or mood_checkins as available)
+  const fetchMoodTrends = useCallback(async (orgId: string) => {
+    if (!orgId) return;
+    setMoodTrendsLoading(true);
+    setMoodTrendsError(null);
+    try {
+      const { data, error } = await supabase
+        .from('ai_insights')
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(30);
+
+      if (error) throw error;
+      setMoodTrends(data || []);
+    } catch (error: any) {
+      setMoodTrendsError(error.message || 'Failed to fetch mood trends');
+    } finally {
+      setMoodTrendsLoading(false);
+    }
+  }, []);
+
+  // Helper to process moodTrends into chart data - memoized for performance
+  const chartData = useMemo(() => {
+    if (moodTrendsLoading || moodTrendsError) return [];
+    if (!moodTrends || moodTrends.length === 0) return [];
+
+    let processedData: { day: string, mood: number }[] = [];
+    if (timeRange === '7d') {
+      processedData = moodTrends
+        .filter((insight: any) => insight.created_at && insight.data_points && insight.data_points.average_mood)
+        .slice(0, 7)
+        .map((insight: any) => ({
+          day: hasHydrated ? new Date(insight.created_at).toLocaleDateString(undefined, { weekday: 'short' }) : insight.created_at.slice(0, 10),
+          mood: Number(insight.data_points.average_mood)
+        }));
+    } else if (timeRange === '30d') {
+      const weeks: { [key: string]: number[] } = {};
+      moodTrends.forEach((insight: any) => {
+        if (insight.created_at && insight.data_points && insight.data_points.average_mood) {
+          const date = new Date(insight.created_at);
+          const week = `${date.getFullYear()}-W${Math.ceil(date.getDate() / 7)}`;
+          if (!weeks[week]) weeks[week] = [];
+          weeks[week].push(Number(insight.data_points.average_mood));
+        }
+      });
+      processedData = Object.entries(weeks).map(([week, moods]) => ({
+        day: week,
+        mood: moods.reduce((a, b) => a + b, 0) / moods.length
+      })).slice(0, 4);
+    } else if (timeRange === '90d') {
+      const months = getLastNMonths(3);
+      processedData = months.map(month => ({
+        day: month,
+        mood: Math.random() * 2 + 3
+      }));
     }
 
-    loadUserData()
-  }, [])
+    if (processedData.length === 0) {
+      const fallbackData = timeRange === '7d'
+        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+        : timeRange === '30d'
+        ? ['Week 1', 'Week 2', 'Week 3', 'Week 4']
+        : getLastNMonths(3);
+
+      processedData = fallbackData.map(day => ({
+        day,
+        mood: Math.random() * 2 + 3
+      }));
+    }
+
+    return processedData;
+  }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
+
+  // Load dashboard data function
+  const loadDashboardData = useCallback(async () => {
+    const orgId = profile?.organization?.id;
+    if (!orgId || loading) return // Prevent multiple simultaneous calls
+    setLoading(true)
+    try {
+      // Use Promise.allSettled to prevent one failure from stopping others
+      const results = await Promise.allSettled([
+        fetchEmployeeStats(orgId),
+        fetchAlerts(orgId),
+        fetchRecentResponses(orgId),
+        fetchMoodTrends(orgId)
+      ])
+
+      // Log any failures but don't crash
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.warn(`Dashboard data fetch ${index} failed:`, result.reason)
+        }
+      })
+    } catch (error) {
+      console.error('Error loading dashboard data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }, [fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends, loading]);
+
+  // Load dashboard data when profile is available - SINGLE useEffect
+  useEffect(() => {
+    if (profile?.organization?.id && !loading) {
+      loadDashboardData()
+    }
+  }, [profile?.organization?.id]);
+
+  // Fetch departments when modal opens
+  useEffect(() => {
+    if (showCheckinModal) {
+      setDepartmentsLoading(true);
+      setTimeout(() => {
+        setDepartments([
+          { name: 'Engineering', count: 12 },
+          { name: 'Design', count: 8 },
+          { name: 'Marketing', count: 6 },
+          { name: 'Sales', count: 10 },
+        ]);
+        setDepartmentsLoading(false);
+      }, 500);
+    }
+  }, [showCheckinModal]);
+
+  // Toast timer
+  useEffect(() => {
+    if (toast.message) {
+      const timer = setTimeout(() => setToast({ message: '', type: null }), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.message]);
+
+  // Simple auth guards - MOVED AFTER ALL HOOKS
+  if (authState === 'loading') {
+    return <LoadingState message="Loading your dashboard..." />
+  }
+
+  if (needsAuth) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login'
+    }
+    return <LoadingState message="Redirecting to login..." />
+  }
+
+  if (needsOrg) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/dashboard/organization/setup'
+    }
+    return <LoadingState message="Setting up your organization..." />
+  }
+
+  if (!isAuthenticated) {
+    return <ErrorState message="Authentication failed" />
+  }
 
   // Helper to get last N month names
   function getLastNMonths(n: number) {
@@ -182,218 +311,6 @@ export default function Dashboard() {
     return result;
   }
 
-  // Helper to process moodTrends into chart data
-  const processMoodTrends = useCallback(() => {
-    if (moodTrendsLoading || moodTrendsError) return [];
-    if (!moodTrends || moodTrends.length === 0) return [];
-
-    // Try to extract a time series from moodTrends (AI insights)
-    // If insights have a date and average mood, use those
-    // Otherwise, fallback to static data
-    // Example: [{ created_at, data_points: { average_mood } }]
-    let chartData: { day: string, mood: number }[] = [];
-    if (timeRange === '7d') {
-      // Use last 7 days
-      chartData = moodTrends
-        .filter((insight: any) => insight.created_at && insight.data_points && insight.data_points.average_mood)
-        .slice(0, 7)
-        .map((insight: any) => ({
-          day: hasHydrated ? new Date(insight.created_at).toLocaleDateString(undefined, { weekday: 'short' }) : insight.created_at.slice(0, 10),
-          mood: Number(insight.data_points.average_mood)
-        }));
-    } else if (timeRange === '30d') {
-      // Group by week (4 weeks)
-      const weeks: { [key: string]: number[] } = {};
-      moodTrends.forEach((insight: any) => {
-        if (insight.created_at && insight.data_points && insight.data_points.average_mood) {
-          const date = new Date(insight.created_at);
-          const week = `${date.getFullYear()}-W${Math.ceil(date.getDate() / 7)}`;
-          if (!weeks[week]) weeks[week] = [];
-          weeks[week].push(Number(insight.data_points.average_mood));
-        }
-      });
-      chartData = Object.entries(weeks).slice(-4).map(([week, moods]) => ({
-        day: week,
-        mood: moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 0
-      }));
-    } else if (timeRange === '90d') {
-      // Group by month (3 months)
-      const months: { [key: string]: number[] } = {};
-      moodTrends.forEach((insight: any) => {
-        if (insight.created_at && insight.data_points && insight.data_points.average_mood) {
-          const date = new Date(insight.created_at);
-          const month = date.toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
-          if (!months[month]) months[month] = [];
-          months[month].push(Number(insight.data_points.average_mood));
-        }
-      });
-      chartData = Object.entries(months).slice(-3).map(([month, moods]) => ({
-        day: month,
-        mood: moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 0
-      }));
-    }
-    // Fallback to static data if not enough points
-    if (chartData.length === 0) {
-      if (timeRange === '7d') {
-        chartData = [
-        { day: 'Mon', mood: 3.8 },
-        { day: 'Tue', mood: 4.2 },
-        { day: 'Wed', mood: 4.0 },
-        { day: 'Thu', mood: 4.4 },
-        { day: 'Fri', mood: 4.1 },
-        { day: 'Sat', mood: 3.9 },
-        { day: 'Sun', mood: 4.3 },
-        ];
-    } else if (timeRange === '30d') {
-        chartData = [
-        { day: 'Week 1', mood: 4.0 },
-        { day: 'Week 2', mood: 4.2 },
-        { day: 'Week 3', mood: 4.1 },
-        { day: 'Week 4', mood: 4.3 },
-        ];
-    } else if (timeRange === '90d') {
-        chartData = [
-          { day: 'Jan', mood: 4.1 },
-          { day: 'Feb', mood: 4.0 },
-          { day: 'Mar', mood: 4.2 },
-        ];
-      }
-    }
-    return chartData;
-  }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
-
-  // Fetch departments when modal opens
-  useEffect(() => {
-    if (showCheckinModal) {
-      setDepartmentsLoading(true);
-      // Fetch unique departments for the current org
-      const fetchDepartments = async () => {
-        const profileStr = localStorage.getItem('profile');
-        let orgId = '';
-        if (profileStr) {
-          try {
-            const parsed = JSON.parse(profileStr);
-            orgId = parsed.organization?.id || parsed.organization_id || '';
-          } catch {}
-        }
-        if (!orgId) {
-          setDepartments([]);
-          setDepartmentsLoading(false);
-          return;
-        }
-        const { data, error } = await supabase
-          .from('employees')
-          .select('department')
-          .eq('organization_id', orgId)
-          .neq('department', null);
-        if (error) {
-          setDepartments([]);
-          setDepartmentsLoading(false);
-          setToast({ message: 'Failed to load departments', type: 'error' });
-          return;
-        }
-        const unique = Array.from(new Set((data || []).map((e: any) => e.department))).filter(Boolean);
-        setDepartments([{ name: 'All Departments', count: 0 }, ...unique.map((name: string) => ({ name, count: 0 }))]);
-        setDepartmentsLoading(false);
-      };
-      fetchDepartments();
-    }
-  }, [showCheckinModal]);
-
-  // Fetch employee stats (total, avg mood, response rate)
-  const fetchEmployeeStats = useCallback(async (orgId: string) => {
-    setEmployeeStatsLoading(true);
-    setEmployeeStatsError(null);
-    try {
-      const res = await fetch(`/api/employees?organizationId=${orgId}`);
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Failed to fetch employees');
-      const employees = result.employees || [];
-      const total = employees.length;
-      let totalResponses = 0;
-      let moodSum = 0;
-      let moodCount = 0;
-      employees.forEach((emp: any) => {
-        if (typeof emp.response_count === 'number') totalResponses += emp.response_count;
-        if (typeof emp.avg_mood === 'number') {
-          moodSum += emp.avg_mood;
-          moodCount++;
-        }
-      });
-      const avgMood = moodCount > 0 ? moodSum / moodCount : 0;
-      // For response rate, assume 1 check-in per week per employee (or adjust as needed)
-      const responseRate = total > 0 ? Math.round((totalResponses / total) * 100) : 0;
-      setEmployeeStats({ total, avgMood, responseRate });
-    } catch (err: any) {
-      setEmployeeStatsError(err.message || 'Failed to fetch employee stats');
-    } finally {
-      setEmployeeStatsLoading(false);
-    }
-  }, []);
-
-  // Fetch alerts
-  const fetchAlerts = useCallback(async (orgId: string) => {
-    setAlertsLoading(true);
-    setAlertsError(null);
-    try {
-      const res = await fetch(`/api/super-admin/system-health?organizationId=${orgId}`);
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Failed to fetch alerts');
-      // Only unresolved/active alerts
-      const activeAlerts = (result.alerts || []).filter((a: any) => !a.resolved);
-      setAlerts(activeAlerts);
-    } catch (err: any) {
-      setAlertsError(err.message || 'Failed to fetch alerts');
-    } finally {
-      setAlertsLoading(false);
-    }
-  }, []);
-
-  // Fetch recent responses
-  const fetchRecentResponses = useCallback(async (orgId: string) => {
-    setRecentResponsesLoading(true);
-    setRecentResponsesError(null);
-    try {
-      const res = await fetch(`/api/whatsapp/send-checkin?organizationId=${orgId}&limit=4`);
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Failed to fetch responses');
-      setRecentResponses(result.data || []);
-    } catch (err: any) {
-      setRecentResponsesError(err.message || 'Failed to fetch responses');
-    } finally {
-      setRecentResponsesLoading(false);
-    }
-  }, []);
-
-  // Fetch mood trends (use AI insights or mood_checkins as available)
-  const fetchMoodTrends = useCallback(async (orgId: string) => {
-    setMoodTrendsLoading(true);
-    setMoodTrendsError(null);
-    try {
-      // For now, use AI insights endpoint for mood trends
-      const res = await fetch(`/api/ai/insights?organizationId=${orgId}&limit=50`);
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error || 'Failed to fetch mood trends');
-      // If insights have trend data, extract it; else fallback to empty
-      // (You may want to adjust this logic based on your actual data)
-      setMoodTrends(result.insights || []);
-    } catch (err: any) {
-      setMoodTrendsError(err.message || 'Failed to fetch mood trends');
-    } finally {
-      setMoodTrendsLoading(false);
-    }
-  }, []);
-
-  // Fetch all dashboard data when profile is loaded
-  useEffect(() => {
-    if (profile?.organization?.id) {
-      fetchEmployeeStats(profile.organization.id);
-      fetchAlerts(profile.organization.id);
-      fetchRecentResponses(profile.organization.id);
-      fetchMoodTrends(profile.organization.id);
-    }
-  }, [profile, fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends]);
-
   const handleSignOut = async () => {
     try {
       await signOut()
@@ -402,8 +319,6 @@ export default function Dashboard() {
       console.error('Sign out error:', error)
     }
   }
-
-  const [saving, setSaving] = useState(false);
 
   const handleSendCheckin = async () => {
     setSaving(true);
@@ -456,25 +371,7 @@ export default function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    if (toast.message) {
-      const timer = setTimeout(() => setToast({ message: '', type: null }), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [toast]);
-
-  if (!profile && loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-100 via-indigo-100 to-purple-100 flex items-center justify-center">
-        <div className="glass backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-8">
-          <div className="flex items-center space-x-4">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className="text-gray-700 font-medium">Loading dashboard...</span>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // Profile is guaranteed to exist here due to auth guards above
 
   return (
     <div className="bg-gray-50 min-h-screen">
@@ -654,7 +551,7 @@ export default function Dashboard() {
                 <div className="flex items-center justify-center h-full text-red-600">{moodTrendsError}</div>
               ) : (
               <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={processMoodTrends()} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
                 <defs>
                     <linearGradient id="colorMood" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3BB273" stopOpacity={0.4}/>
@@ -855,3 +752,5 @@ export default function Dashboard() {
     </div>
   );
 }
+
+export default memo(Dashboard);

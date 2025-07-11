@@ -1,9 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useEffect } from 'react'
-import { useAuth } from '@/lib/auth'
-import { useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
+import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 interface MoodCheckin {
   mood_score: number
@@ -22,16 +21,16 @@ interface Employee {
 }
 
 export default function Analytics() {
-  const { profile, loading: authLoading } = useAuth()
+  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
   const [timeRange, setTimeRange] = useState('30d')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [insights, setInsights] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasHydrated, setHasHydrated] = useState(false)
   useEffect(() => { setHasHydrated(true) }, [])
 
-  // Fetch employees and insights
+  // Fetch employees and insights - MOVED BEFORE AUTH GUARDS
   useEffect(() => {
     const fetchData = async () => {
       if (!profile?.organization?.id) return
@@ -57,6 +56,29 @@ export default function Analytics() {
     }
     if (profile?.organization?.id) fetchData()
   }, [profile?.organization?.id, timeRange])
+
+  // Simple auth guards - MOVED AFTER ALL HOOKS
+  if (authState === 'loading') {
+    return <LoadingState message="Loading analytics..." />
+  }
+
+  if (needsAuth) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login'
+    }
+    return <LoadingState message="Redirecting to login..." />
+  }
+
+  if (needsOrg) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/dashboard/organization/setup'
+    }
+    return <LoadingState message="Setting up your organization..." />
+  }
+
+  if (!isAuthenticated) {
+    return <ErrorState message="Authentication failed" />
+  }
 
   // Compute metrics
   let avgMood = 0, responseRate = 0, engagementScore = 0, riskAlerts = 0
@@ -118,26 +140,19 @@ export default function Analytics() {
   // AI Insights for display
   const aiInsights = insights.slice(0, 3)
 
-  if (authLoading || loading) {
-    return (
-      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading analytics...</p>
-        </div>
-      </div>
-    )
+  if (loading) {
+    return <LoadingState message="Loading analytics data..." />
   }
 
   if (error) {
-    return (
-      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-600 text-lg font-medium">Error loading analytics</div>
-          <p className="text-gray-600 mt-2">{error}</p>
-        </div>
-      </div>
-    )
+    return <ErrorState message={error} onRetry={() => {
+      setError(null)
+      setLoading(true)
+      // Trigger data refetch
+      if (profile?.organization?.id) {
+        window.location.reload()
+      }
+    }} />
   }
 
   return (
@@ -286,7 +301,47 @@ export default function Analytics() {
             </div>
           </div>
         </div>
+
         {/* Insights and Recommendations */}
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">AI Insights & Recommendations</h2>
+          <div className="space-y-4">
+            {insights.length === 0 ? (
+              <div className="text-gray-500 text-center py-8">
+                <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                <p>No insights available yet</p>
+                <p className="text-sm text-gray-400 mt-1">Insights will appear as data is collected</p>
+              </div>
+            ) : (
+              insights.slice(0, 3).map((insight, index) => (
+                <div key={index} className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <svg className="w-3 h-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-sm font-medium text-blue-900 mb-1">
+                        {insight.title || `Insight ${index + 1}`}
+                      </h3>
+                      <p className="text-sm text-blue-800">
+                        {insight.description || insight.content || 'AI-generated insight based on recent data patterns.'}
+                      </p>
+                      {insight.created_at && (
+                        <p className="text-xs text-blue-600 mt-2">
+                          {new Date(insight.created_at).toLocaleDateString()}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </main>
     </div>
   )

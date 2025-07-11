@@ -1,52 +1,22 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useAuth } from '@/lib/auth'
+import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 export default function Responses() {
-  const { profile: authProfile, loading: authLoading } = useAuth()
-  const [profile, setProfile] = useState<any>(null)
+  // ALL HOOKS MUST BE DECLARED FIRST - NO CONDITIONAL RETURNS BEFORE THIS
+  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
   const [responses, setResponses] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filterPeriod, setFilterPeriod] = useState('7d')
   const [filterMood, setFilterMood] = useState('all')
   const [hasHydrated, setHasHydrated] = useState(false)
-  useEffect(() => { setHasHydrated(true) }, [])
 
-  // Load profile from useAuth or localStorage
-  useEffect(() => {
-    if (authProfile && authProfile.organization) {
-      setProfile(authProfile)
-    } else {
-      const cachedProfile = typeof window !== 'undefined' ? localStorage.getItem('profile') : null
-      if (cachedProfile) {
-        try {
-          const parsed = JSON.parse(cachedProfile)
-          let orgCandidate = parsed.organization
-          let org = { id: '', name: '', subscription_plan: '' }
-          if (Array.isArray(orgCandidate) && orgCandidate.length > 0 && typeof orgCandidate[0] === 'object') {
-            org = orgCandidate[0]
-          } else if (orgCandidate && typeof orgCandidate === 'object' && !Array.isArray(orgCandidate)) {
-            org = orgCandidate
-          }
-          setProfile({
-            id: parsed.id || '',
-            first_name: parsed.first_name || '',
-            last_name: parsed.last_name || '',
-            email: parsed.email || '',
-            role: parsed.role || '',
-            organization: org,
-            organization_id: org.id || ''
-          })
-        } catch {}
-      }
-    }
-  }, [authProfile])
-
+  // FUNCTION DEFINITIONS FIRST
   // Fetch employees and aggregate mood check-ins
-  useEffect(() => {
-    const fetchResponses = async () => {
+  const fetchResponses = async () => {
       if (!profile?.organization?.id) return
       setLoading(true)
       setError(null)
@@ -81,39 +51,70 @@ export default function Responses() {
         setLoading(false)
       }
     }
-    if (profile?.organization?.id) fetchResponses()
+
+  // ALL useEffect HOOKS MUST BE DECLARED HERE
+  useEffect(() => { setHasHydrated(true) }, [])
+
+  // Load responses data when profile is available
+  useEffect(() => {
+    if (profile?.organization?.id) {
+      fetchResponses()
+    }
   }, [profile?.organization?.id])
 
-  // Filtering logic
-  const now = new Date()
-  let days = 7
-  if (filterPeriod === '30d') days = 30
-  else if (filterPeriod === '90d') days = 90
-  const since = new Date(now)
-  since.setDate(now.getDate() - days)
-  // Memoize formatted responses
+  // Memoize formatted responses - MUST BE WITH OTHER HOOKS
   const formattedResponses = useMemo(() => {
-    return responses.map(r => ({
-      ...r,
-      formattedTimestamp: r.timestamp
-        ? (hasHydrated ? new Date(r.timestamp).toLocaleString() : new Date(r.timestamp).toISOString().replace('T',' ').slice(0,16))
-        : ''
-    }))
-  }, [responses, hasHydrated])
-  const filteredResponses = formattedResponses.filter(response => {
-    // Filter by period
-    if (response.timestamp && new Date(response.timestamp) < since) return false
-    // Filter by mood
-    if (filterMood !== 'all') {
-      const moodRange = filterMood.split('-').map(Number)
-      if (moodRange.length === 2) {
-        if (response.mood < moodRange[0] || response.mood > moodRange[1]) return false
-      } else {
-        if (response.mood !== parseInt(filterMood)) return false
-      }
+    // Filtering logic
+    const now = new Date()
+    let days = 7
+    if (filterPeriod === '30d') days = 30
+    else if (filterPeriod === '90d') days = 90
+    const since = new Date(now)
+    since.setDate(now.getDate() - days)
+
+    return responses
+      .filter(r => {
+        const responseDate = new Date(r.timestamp)
+        const withinPeriod = responseDate >= since
+        const matchesMood = filterMood === 'all' ||
+          (filterMood === 'positive' && r.mood >= 4) ||
+          (filterMood === 'neutral' && r.mood === 3) ||
+          (filterMood === 'negative' && r.mood <= 2)
+        return withinPeriod && matchesMood
+      })
+      .map(r => ({
+        ...r,
+        formattedTimestamp: r.timestamp
+          ? (hasHydrated ? new Date(r.timestamp).toLocaleString() : new Date(r.timestamp).toISOString().replace('T',' ').slice(0,16))
+          : ''
+      }))
+  }, [responses, filterPeriod, filterMood, hasHydrated])
+
+  // NOW CONDITIONAL RETURNS ARE SAFE
+  if (authState === 'loading') {
+    return <LoadingState message="Loading responses..." />
+  }
+
+  if (needsAuth) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login'
     }
-    return true
-  })
+    return <LoadingState message="Redirecting to login..." />
+  }
+
+  if (needsOrg) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/dashboard/organization/setup'
+    }
+    return <LoadingState message="Setting up your organization..." />
+  }
+
+  if (!isAuthenticated) {
+    return <ErrorState message="Authentication failed" />
+  }
+
+  // Use the memoized filtered responses
+  const filteredResponses = formattedResponses
 
   const getMoodColor = (mood: number) => {
     if (mood >= 4) return 'text-green-600 bg-green-100'
@@ -123,27 +124,6 @@ export default function Responses() {
   const getMoodLabel = (mood: number) => {
     const labels = ['', 'Very Poor', 'Poor', 'Neutral', 'Good', 'Excellent']
     return labels[mood] || 'Unknown'
-  }
-
-  if (authLoading || loading) {
-    return (
-      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading responses...</p>
-        </div>
-      </div>
-    )
-  }
-  if (error) {
-    return (
-      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-600 text-lg font-medium">Error loading responses</div>
-          <p className="text-gray-600 mt-2">{error}</p>
-        </div>
-      </div>
-    )
   }
 
   return (

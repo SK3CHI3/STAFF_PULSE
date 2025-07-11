@@ -1,13 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuth } from '@/lib/auth'
+import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 export default function Settings() {
-  const { profile, loading: authLoading } = useAuth()
+  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
   const [activeTab, setActiveTab] = useState('general')
   const [settings, setSettings] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -24,12 +25,29 @@ export default function Settings() {
       alertThreshold: api.alert_threshold ?? 2.5,
       workingHours: api.working_hours || '09:00-17:00',
       timezone: api.timezone || 'Africa/Nairobi',
-      address: api.address || '',
-      billingEmail: api.billing_email || '',
-      email: api.email || '',
-      phone: api.phone || '',
+      whatsappEnabled: api.whatsapp_enabled ?? true,
+      emailEnabled: api.email_enabled ?? true,
+      smsEnabled: api.sms_enabled ?? false,
+      slackWebhook: api.slack_webhook || '',
+      teamsWebhook: api.teams_webhook || '',
+      discordWebhook: api.discord_webhook || '',
+      twoFactorEnabled: api.two_factor_enabled ?? false,
+      sessionTimeout: api.session_timeout ?? 30,
+      passwordPolicy: api.password_policy || 'medium',
+      auditLogging: api.audit_logging ?? true,
+      dataRetention: api.data_retention ?? 365,
+      backupFrequency: api.backup_frequency || 'daily',
+      encryptionEnabled: api.encryption_enabled ?? true,
+      companyAddress: api.address || '',
+      companyWebsite: api.website || '',
+      companyIndustry: api.industry || '',
+      companySize: api.company_size || '',
+      contactEmail: api.contact_email || '',
+      phone: api.phone || ''
     }
   }
+
+  // Map UI fields to API fields
   function mapUiToApi(ui: any) {
     return {
       name: ui.companyName,
@@ -39,14 +57,29 @@ export default function Settings() {
       alert_threshold: ui.alertThreshold,
       working_hours: ui.workingHours,
       timezone: ui.timezone,
-      address: ui.address,
-      billing_email: ui.billingEmail,
-      email: ui.email,
+      whatsapp_enabled: ui.whatsappEnabled,
+      email_enabled: ui.emailEnabled,
+      sms_enabled: ui.smsEnabled,
+      slack_webhook: ui.slackWebhook,
+      teams_webhook: ui.teamsWebhook,
+      discord_webhook: ui.discordWebhook,
+      two_factor_enabled: ui.twoFactorEnabled,
+      session_timeout: ui.sessionTimeout,
+      password_policy: ui.passwordPolicy,
+      audit_logging: ui.auditLogging,
+      data_retention: ui.dataRetention,
+      backup_frequency: ui.backupFrequency,
+      encryption_enabled: ui.encryptionEnabled,
+      address: ui.companyAddress,
+      website: ui.companyWebsite,
+      industry: ui.companyIndustry,
+      company_size: ui.companySize,
+      contact_email: ui.contactEmail,
       phone: ui.phone,
     }
   }
 
-  // Fetch settings on mount
+  // Fetch settings on mount - MOVED BEFORE AUTH GUARDS
   useEffect(() => {
     async function fetchSettings() {
       if (!profile?.organization?.id) return
@@ -67,10 +100,33 @@ export default function Settings() {
       }
       setLoading(false)
     }
-    if (!authLoading && profile?.organization?.id) {
+    if (profile?.organization?.id) {
       fetchSettings()
     }
-  }, [authLoading, profile?.organization?.id])
+  }, [profile?.organization?.id])
+
+  // Simple auth guards - MOVED AFTER ALL HOOKS
+  if (authState === 'loading') {
+    return <LoadingState message="Loading settings..." />
+  }
+
+  if (needsAuth) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login'
+    }
+    return <LoadingState message="Redirecting to login..." />
+  }
+
+  if (needsOrg) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/dashboard/organization/setup'
+    }
+    return <LoadingState message="Setting up your organization..." />
+  }
+
+  if (!isAuthenticated) {
+    return <ErrorState message="Authentication failed" />
+  }
 
   const tabs = [
     { id: 'general', name: 'General', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' },
@@ -123,15 +179,9 @@ export default function Settings() {
     setSaving(false)
   }
 
-  // Loading and error states
-  if (authLoading || loading) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-500">Loading settings...</div>
-  }
-  if (error) {
-    return <div className="flex items-center justify-center min-h-screen text-red-600">{error}</div>
-  }
-  if (!settings) {
-    return <div className="flex items-center justify-center min-h-screen text-gray-500">No settings found.</div>
+  // Show loading state while fetching settings
+  if (loading) {
+    return <LoadingState message="Loading settings data..." />
   }
 
   return (

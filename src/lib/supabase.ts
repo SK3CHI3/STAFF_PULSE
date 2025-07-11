@@ -12,6 +12,8 @@ if (!supabaseUrl || !supabaseAnonKey) {
   )
 }
 
+console.log('🔗 [Supabase] Initializing client with URL:', supabaseUrl)
+
 // Client-side Supabase client (for use in client components)
 export const supabase = createClient(supabaseUrl, supabaseAnonKey)
 

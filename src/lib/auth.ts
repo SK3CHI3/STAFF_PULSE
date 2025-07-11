@@ -65,30 +65,39 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
 
 // Sign in existing user
 export async function signIn(data: SignInData): Promise<AuthResponse> {
+  console.log('🔐 [signIn] Starting sign-in process for:', data.email)
+
   try {
+    console.log('🔐 [signIn] Calling Supabase auth.signInWithPassword...')
     const { data: authData, error } = await supabase.auth.signInWithPassword({
       email: data.email,
       password: data.password
     })
 
+    console.log('🔐 [signIn] Supabase response:', { user: authData?.user?.id, error: error?.message })
+
     if (error) {
+      console.error('🔐 [signIn] Sign-in error:', error)
       return { user: null, error }
     }
 
     // Update last login time
     if (authData.user) {
+      console.log('🔐 [signIn] Updating last login time...')
       await supabase
         .from('profiles')
         .update({ last_login: new Date().toISOString() })
         .eq('id', authData.user.id)
     }
 
+    console.log('🔐 [signIn] Sign-in successful!')
     return { user: authData.user, error: null }
 
   } catch (error) {
-    return { 
-      user: null, 
-      error: new AuthError(error instanceof Error ? error.message : 'Unknown error') 
+    console.error('🔐 [signIn] Unexpected error:', error)
+    return {
+      user: null,
+      error: new AuthError(error instanceof Error ? error.message : 'Unknown error')
     }
   }
 }
@@ -134,20 +143,17 @@ export async function getCurrentUser(): Promise<{ user: User | null, error: Auth
 
 // Get user profile with organization
 export async function getUserProfile(userId: string) {
-  const start = performance.now();
   try {
     const { data, error } = await supabase
       .from('profiles')
       .select(`id, first_name, last_name, email, role, organization:organizations(id, name, subscription_plan)`)
       .eq('id', userId)
       .single()
-    const duration = performance.now() - start;
-    console.log(`[PERF] getUserProfile for user ${userId} took ${duration.toFixed(2)}ms`);
     return { data, error }
   } catch (error) {
-    return { 
-      data: null, 
-      error: new AuthError(error instanceof Error ? error.message : 'Unknown error') 
+    return {
+      data: null,
+      error: new AuthError(error instanceof Error ? error.message : 'Unknown error')
     }
   }
 }
@@ -231,35 +237,66 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [initialized, setInitialized] = useState(false)
 
   // Add a method to force-refresh the profile
   const refreshProfile = async () => {
+    if (loading) return // Prevent multiple simultaneous calls
+
     setLoading(true)
     try {
-      const res = await fetch('/api/profile')
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+      const res = await fetch('/api/profile', {
+        signal: controller.signal
+      })
+      clearTimeout(timeoutId)
+
       const data = await res.json()
+
       if (data.profile) {
         setProfile(data.profile)
         if (typeof window !== 'undefined') {
           localStorage.setItem('profile', JSON.stringify(data.profile))
         }
       }
-    } catch {}
+    } catch (error) {
+      console.error('Profile refresh failed:', error)
+    }
     setLoading(false)
   }
 
   useEffect(() => {
+    let isMounted = true
+
     // Get initial session
     const getInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user ?? null)
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
 
-      if (session?.user) {
-        const { data: profileData } = await getUserProfile(session.user.id)
-        setProfile(profileData)
+        if (!isMounted) return
+
+        setUser(session?.user ?? null)
+
+        if (session?.user) {
+          const { data: profileData } = await getUserProfile(session.user.id)
+          if (isMounted) {
+            setProfile(profileData)
+          }
+        }
+
+        if (isMounted) {
+          setLoading(false)
+          setInitialized(true)
+        }
+      } catch (error) {
+        console.error('Error getting initial session:', error)
+        if (isMounted) {
+          setLoading(false)
+          setInitialized(true)
+        }
       }
-
-      setLoading(false)
     }
 
     getInitialSession()
@@ -267,33 +304,43 @@ export function useAuth() {
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!isMounted) return
+
         setUser(session?.user ?? null)
 
         if (session?.user) {
           const { data: profileData } = await getUserProfile(session.user.id)
-          setProfile(profileData)
+          if (isMounted) {
+            setProfile(profileData)
+          }
         } else {
           setProfile(null)
         }
 
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      isMounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   // After successful login, always fetch profile
   useEffect(() => {
-    if (user && !profile && !loading) {
+    if (user && !profile && !loading && initialized) {
       refreshProfile()
     }
-  }, [user])
+  }, [user, profile, loading, initialized])
 
   return {
     user,
     profile,
     loading,
+    initialized,
     signUp,
     signIn,
     signOut,

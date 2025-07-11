@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/auth'
+import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 interface Employee {
   id: string
@@ -26,6 +27,8 @@ interface Department {
 }
 
 export default function Employees() {
+  // ALL HOOKS MUST BE DECLARED FIRST - NO CONDITIONAL RETURNS BEFORE THIS
+  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedDepartment, setSelectedDepartment] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all')
@@ -35,65 +38,32 @@ export default function Employees() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [profile, setProfile] = useState<any>(null)
   const [hasHydrated, setHasHydrated] = useState(false)
-  useEffect(() => { setHasHydrated(true) }, [])
-
-  const { user, profile: authProfile } = useAuth()
-
-  // Load cached profile from localStorage first
-  useEffect(() => {
-    const cachedProfile = localStorage.getItem('profile')
-    if (cachedProfile) {
-      try {
-        const parsed = JSON.parse(cachedProfile)
-        let orgCandidate = parsed.organization
-        let org: { id: string; name: string; subscription_plan: string } = { id: '', name: '', subscription_plan: '' }
-        if (Array.isArray(orgCandidate) && orgCandidate.length > 0 && typeof orgCandidate[0] === 'object') {
-          org = orgCandidate[0] as { id: string; name: string; subscription_plan: string }
-        } else if (orgCandidate && typeof orgCandidate === 'object' && !Array.isArray(orgCandidate)) {
-          org = orgCandidate as { id: string; name: string; subscription_plan: string }
-        }
-        setProfile({
-          id: parsed.id || '',
-          first_name: parsed.first_name || '',
-          last_name: parsed.last_name || '',
-          email: parsed.email || '',
-          role: parsed.role || '',
-          organization: org,
-          organization_id: org.id || ''
-        })
-      } catch (e) {
-        // Ignore invalid cache
-      }
-    }
-  }, [])
 
   // Fetch departments from API
-  const fetchDepartments = async () => {
+  const fetchDepartments = useCallback(async () => {
     if (!profile?.organization?.id) return;
     setDepartmentsLoading(true);
     try {
       const res = await fetch(`/api/departments?organizationId=${profile.organization.id}`);
       const result = await res.json();
       if (result.success) {
-      // Add count by counting employees in each department
-      const deptList: Department[] = (result.departments || []).map((d: any) => ({ id: d.id, name: d.name, count: 0 }));
-      setDepartments(deptList);
-    } else {
+        const deptList: Department[] = (result.departments || []).map((d: any) => ({ id: d.id, name: d.name, count: 0 }));
+        setDepartments(deptList);
+      } else {
+        setDepartments([]);
+      }
+    } catch {
       setDepartments([]);
+    } finally {
+      setDepartmentsLoading(false);
     }
-  } catch {
-    setDepartments([]);
-  } finally {
-    setDepartmentsLoading(false);
-  }
-};
+  }, [profile?.organization?.id]);
 
   // Fetch employees and departments from API
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     if (!profile?.organization?.id) return;
     setLoading(true);
     setError(null);
@@ -115,12 +85,42 @@ export default function Employees() {
       setLoading(false);
     }
     await fetchDepartments();
-  };
+  }, [profile?.organization?.id, selectedDepartment, selectedStatus, fetchDepartments]);
+
+  // Memoize formatted last_response for each employee
+  const employeesWithFormattedDates = useMemo(() => {
+    return employees.map(emp => ({
+      ...emp,
+      last_response: emp.last_response
+        ? (hasHydrated ? new Date(emp.last_response).toLocaleDateString() : new Date(emp.last_response).toISOString().slice(0,10))
+        : null
+    }))
+  }, [employees, hasHydrated])
+
+  // Filter employees - memoized for performance
+  const filteredEmployees = useMemo(() => {
+    return employeesWithFormattedDates.filter(employee => {
+      const matchesSearch =
+        employee.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        employee.department?.toLowerCase().includes(searchTerm.toLowerCase())
+
+      const matchesDepartment = selectedDepartment === 'all' || employee.department === selectedDepartment
+      const matchesStatus = selectedStatus === 'all' ||
+        (selectedStatus === 'active' && employee.is_active) ||
+        (selectedStatus === 'inactive' && !employee.is_active)
+
+      return matchesSearch && matchesDepartment && matchesStatus
+    })
+  }, [employeesWithFormattedDates, searchTerm, selectedDepartment, selectedStatus])
+
+  // ALL useEffect HOOKS
+  useEffect(() => { setHasHydrated(true) }, [])
 
   // Recalculate department counts whenever employees or departments change
   useEffect(() => {
     if (!departments.length) return;
-    // Use the full employees list, not filteredEmployees
     const deptCountMap: Record<string, number> = {};
     employees.forEach((emp: any) => {
       if (emp.department) {
@@ -136,71 +136,53 @@ export default function Employees() {
 
   // Fetch employees when filters or profile change
   useEffect(() => {
-    fetchEmployees();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile, selectedDepartment, selectedStatus]);
+    if (profile?.organization?.id) {
+      fetchEmployees();
+    }
+  }, [profile?.organization?.id, selectedDepartment, selectedStatus, fetchEmployees]);
 
-  // Memoize formatted last_response for each employee
-  const employeesWithFormattedDates = useMemo(() => {
-    return employees.map(emp => ({
-      ...emp,
-      last_response: emp.last_response
-        ? (hasHydrated ? new Date(emp.last_response).toLocaleDateString() : new Date(emp.last_response).toISOString().slice(0,10))
-        : null
-    }))
-  }, [employees, hasHydrated])
+  // NOW CONDITIONAL RETURNS ARE SAFE
+  if (authState === 'loading') {
+    return <LoadingState message="Loading employees..." />
+  }
 
-  // Filter employees
-  const filteredEmployees = employeesWithFormattedDates.filter(employee => {
-    const matchesSearch =
-      employee.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.last_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      employee.department?.toLowerCase().includes(searchTerm.toLowerCase())
+  if (needsAuth) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login'
+    }
+    return <LoadingState message="Redirecting to login..." />
+  }
 
-    const matchesDepartment = selectedDepartment === 'all' || employee.department === selectedDepartment
-    const matchesStatus = selectedStatus === 'all' ||
-      (selectedStatus === 'active' && employee.is_active) ||
-      (selectedStatus === 'inactive' && !employee.is_active)
+  if (needsOrg) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/dashboard/organization/setup'
+    }
+    return <LoadingState message="Setting up your organization..." />
+  }
 
-    return matchesSearch && matchesDepartment && matchesStatus
-  })
+  if (!isAuthenticated) {
+    return <ErrorState message="Authentication failed" />
+  }
 
   if (loading) {
-    return (
-      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading employees...</p>
-        </div>
-      </div>
-    )
+    return <LoadingState message="Loading employees data..." />
   }
 
   if (error) {
-    return (
-      <div className="bg-gray-50 min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-600 text-lg font-medium">Error loading employees</div>
-          <p className="text-gray-600 mt-2">{error}</p>
-          <button
-            onClick={() => {
-              setLoading(true)
-              fetchEmployees()
-            }}
-            className="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    )
+    return <ErrorState message={error} onRetry={() => {
+      setError(null)
+      setLoading(true)
+      if (profile?.organization?.id) {
+        fetchEmployees()
+      }
+    }} />
   }
 
   const handleAddSuccess = () => {
     setShowAddModal(false);
     fetchEmployees();
   };
+  
   const handleImportSuccess = () => {
     setShowImportModal(false);
     fetchEmployees();
@@ -264,7 +246,7 @@ export default function Employees() {
         </div>
       </header>
 
-      {/* Department Summary Cards - moved here */}
+      {/* Department Summary Cards */}
       {departments.length > 0 && (
         <div className="px-6 pt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -472,539 +454,6 @@ export default function Employees() {
           </div>
         </div>
       </main>
-
-      {/* Add Employee Modal */}
-      {showAddModal && (
-        <AddEmployeeModal
-          onClose={() => setShowAddModal(false)}
-          onSuccess={handleAddSuccess}
-          organizationId={profile?.organization?.id}
-          departments={departments}
-          fetchDepartments={fetchDepartments}
-        />
-      )}
-
-      {/* Import CSV Modal */}
-      {showImportModal && (
-        <ImportEmployeesModal
-          onClose={() => setShowImportModal(false)}
-          onSuccess={handleImportSuccess}
-          organizationId={profile?.organization?.id}
-        />
-      )}
-
-      {/* Department Modal */}
-      {showDeptModal && (
-        <CreateDepartmentModal
-          onClose={() => setShowDeptModal(false)}
-          onSuccess={() => { setShowDeptModal(false); fetchDepartments(); }}
-          organizationId={profile?.organization?.id}
-        />
-      )}
     </div>
   )
-}
-
-// Add Employee Modal Component
-function AddEmployeeModal({ onClose, onSuccess, organizationId, departments, fetchDepartments }: { onClose: () => void; onSuccess: () => void; organizationId?: string; departments: Department[]; fetchDepartments: () => void }) {
-  const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    department: '',
-    position: ''
-  })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showDeptModal, setShowDeptModal] = useState(false);
-
-  useEffect(() => {
-    if (organizationId) {
-      fetch(`/api/departments?organizationId=${organizationId}`)
-        .then(res => res.json())
-        .then(result => {
-          // No-op: departments are managed by parent and passed as prop
-        });
-    }
-  }, [organizationId, showDeptModal]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!organizationId) return
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const { error: insertError } = await supabase
-        .from('employees')
-        .insert({
-          ...formData,
-          organization_id: organizationId,
-          phone: formData.phone.startsWith('+') ? formData.phone : `+${formData.phone}`
-        })
-
-      if (insertError) throw insertError
-
-      onSuccess()
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg border border-gray-100">
-        <h2 className="text-2xl font-bold text-gray-900 mb-4">Add New Employee</h2>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-1">
-                First Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.first_name}
-                onChange={(e) => setFormData({...formData, first_name: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-800 mb-1">
-                Last Name *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.last_name}
-                onChange={(e) => setFormData({...formData, last_name: e.target.value})}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1">
-              Email
-            </label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1">
-              WhatsApp Phone Number *
-            </label>
-            <input
-              type="tel"
-              required
-              placeholder="+254712345678"
-              value={formData.phone}
-              onChange={(e) => setFormData({...formData, phone: e.target.value})}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-1">
-              Department
-            </label>
-            <div className="flex gap-2">
-              <select
-              value={formData.department}
-                onChange={e => setFormData({ ...formData, department: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400"
-              >
-                <option value="">Select department</option>
-                {departments.map(dept => (
-                  <option key={dept.id} value={dept.name}>{dept.name}</option>
-                ))}
-              </select>
-              <button type="button" onClick={() => setShowDeptModal(true)} className="px-2 py-1 bg-blue-100 text-blue-700 rounded font-bold text-lg">+</button>
-          </div>
-          </div>
-          <div className="flex justify-end space-x-3 pt-4">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 cursor-pointer font-semibold shadow-sm"
-            >
-              {loading ? 'Adding...' : 'Add Employee'}
-            </button>
-          </div>
-        </form>
-        {showDeptModal && (
-          <CreateDepartmentModal
-            onClose={() => setShowDeptModal(false)}
-            onSuccess={() => { setShowDeptModal(false); fetchDepartments(); }}
-            organizationId={organizationId}
-          />
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Import Employees Modal Component
-function ImportEmployeesModal({ onClose, onSuccess, organizationId }: {
-  onClose: () => void
-  onSuccess: () => void
-  organizationId?: string
-}) {
-  const [step, setStep] = useState<'upload' | 'preview' | 'importing' | 'results'>('upload')
-  const [csvFile, setCsvFile] = useState<File | null>(null)
-  const [csvData, setCsvData] = useState<string>('')
-  const [previewData, setPreviewData] = useState<any[]>([])
-  const [importResults, setImportResults] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    if (!file.name.endsWith('.csv')) {
-      setError('Please select a CSV file')
-      return
-    }
-
-    setCsvFile(file)
-    setError(null)
-
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      const text = e.target?.result as string
-      setCsvData(text)
-
-      // Parse for preview
-      try {
-        const lines = text.split('\n').filter(line => line.trim() !== '')
-        const headers = lines[0].split(',').map(h => h.trim().replace(/['"]/g, ''))
-        const preview = lines.slice(1, 6).map(line => {
-          const values = line.split(',').map(v => v.trim().replace(/['"]/g, ''))
-          const row: any = {}
-          headers.forEach((header, index) => {
-            row[header] = values[index] || ''
-          })
-          return row
-        })
-        setPreviewData(preview)
-        setStep('preview')
-      } catch (err) {
-        setError('Error parsing CSV file')
-      }
-    }
-    reader.readAsText(file)
-  }
-
-  const handleImport = async () => {
-    if (!organizationId || !csvData) return
-
-    setStep('importing')
-    setLoading(true)
-
-    try {
-      const response = await fetch('/api/employees/import', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          organizationId,
-          csvData
-        })
-      })
-
-      const results = await response.json()
-      setImportResults(results)
-      setStep('results')
-
-      if (results.success && results.imported > 0) {
-        onSuccess()
-      }
-    } catch (err: any) {
-      setError(err.message)
-      setStep('preview')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const downloadTemplate = async () => {
-    try {
-      const response = await fetch('/api/employees/import')
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'employee_import_template.csv'
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-    } catch (err) {
-      setError('Failed to download template')
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold">Import Employees</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {error && (
-          <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-            {error}
-          </div>
-        )}
-
-        {/* Step 1: Upload */}
-        {step === 'upload' && (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8">
-                <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <p className="text-lg font-medium text-gray-900 mb-2">Upload CSV File</p>
-                <p className="text-gray-600 mb-4">Select a CSV file with employee data</p>
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  id="csv-upload"
-                />
-                <label
-                  htmlFor="csv-upload"
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 cursor-pointer inline-block"
-                >
-                  Choose File
-                </label>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <h3 className="font-medium text-gray-900 mb-2">CSV Format Requirements:</h3>
-              <ul className="text-sm text-gray-600 space-y-1">
-                <li>• <strong>first_name</strong> (required): Employee's first name</li>
-                <li>• <strong>last_name</strong> (required): Employee's last name</li>
-                <li>• <strong>phone</strong> (required): WhatsApp phone number with country code</li>
-                <li>• <strong>email</strong> (optional): Employee's email address</li>
-                <li>• <strong>department</strong> (optional): Department name</li>
-                <li>• <strong>position</strong> (optional): Job position/title</li>
-              </ul>
-              <button
-                onClick={downloadTemplate}
-                className="mt-3 text-blue-600 hover:text-blue-800 text-sm font-medium"
-              >
-                Download Template CSV
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Preview */}
-        {step === 'preview' && (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-medium">Preview Data</h3>
-              <p className="text-sm text-gray-600">
-                Showing first 5 rows of {csvData.split('\n').length - 1} total rows
-              </p>
-            </div>
-
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-2 text-left">First Name</th>
-                    <th className="px-4 py-2 text-left">Last Name</th>
-                    <th className="px-4 py-2 text-left">Email</th>
-                    <th className="px-4 py-2 text-left">Phone</th>
-                    <th className="px-4 py-2 text-left">Department</th>
-                    <th className="px-4 py-2 text-left">Position</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {previewData.map((row, index) => (
-                    <tr key={index}>
-                      <td className="px-4 py-2">{row.first_name || '-'}</td>
-                      <td className="px-4 py-2">{row.last_name || '-'}</td>
-                      <td className="px-4 py-2">{row.email || '-'}</td>
-                      <td className="px-4 py-2">{row.phone || '-'}</td>
-                      <td className="px-4 py-2">{row.department || '-'}</td>
-                      <td className="px-4 py-2">{row.position || '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="flex justify-between">
-              <button
-                onClick={() => setStep('upload')}
-                className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Back
-              </button>
-              <button
-                onClick={handleImport}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Import Employees
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 3: Importing */}
-        {step === 'importing' && (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-lg font-medium text-gray-900">Importing employees...</p>
-            <p className="text-gray-600">Please wait while we process your data</p>
-          </div>
-        )}
-
-        {/* Step 4: Results */}
-        {step === 'results' && importResults && (
-          <div className="space-y-6">
-            <div className="text-center">
-              <div className={`w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center ${
-                importResults.success ? 'bg-green-100' : 'bg-red-100'
-              }`}>
-                <svg className={`w-8 h-8 ${
-                  importResults.success ? 'text-green-600' : 'text-red-600'
-                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {importResults.success ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  )}
-                </svg>
-              </div>
-              <h3 className="text-lg font-medium text-gray-900">Import Complete</h3>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-green-50 p-4 rounded-lg text-center">
-                <p className="text-2xl font-bold text-green-600">{importResults.imported}</p>
-                <p className="text-sm text-green-700">Successfully Imported</p>
-              </div>
-              <div className="bg-red-50 p-4 rounded-lg text-center">
-                <p className="text-2xl font-bold text-red-600">{importResults.failed}</p>
-                <p className="text-sm text-red-700">Failed</p>
-              </div>
-            </div>
-
-            {importResults.errors && importResults.errors.length > 0 && (
-              <div>
-                <h4 className="font-medium text-gray-900 mb-2">Errors:</h4>
-                <div className="max-h-40 overflow-y-auto border rounded-lg">
-                  {importResults.errors.map((error: any, index: number) => (
-                    <div key={index} className="p-3 border-b last:border-b-0">
-                      <p className="text-sm font-medium text-red-600">Row {error.row}: {error.error}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {JSON.stringify(error.data)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <button
-                onClick={onClose}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// CreateDepartmentModal component
-function CreateDepartmentModal({ onClose, onSuccess, organizationId }: { onClose: () => void; onSuccess: () => void; organizationId?: string }) {
-  const [name, setName] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!organizationId || !name.trim()) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/departments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organizationId, name: name.trim() })
-      });
-      const result = await res.json();
-      if (result.success) {
-        onSuccess();
-      } else {
-        setError(result.error || 'Failed to create department');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Failed to create department');
-    } finally {
-      setLoading(false);
-    }
-  };
-  return (
-    <div className="fixed inset-0 bg-white/70 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-lg">
-        <h2 className="text-lg font-semibold mb-4">Create Department</h2>
-        {error && <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">{error}</div>}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-800 mb-1">Department Name *</label>
-            <input type="text" required value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-400" />
-          </div>
-          <div className="flex justify-end space-x-3 pt-4">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
-            <button type="submit" disabled={loading} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{loading ? 'Creating...' : 'Create'}</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
 }

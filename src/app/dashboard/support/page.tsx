@@ -1,8 +1,34 @@
 'use client'
 
 import { useState } from 'react'
+import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 export default function Support() {
+  const { authState, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+
+  // Simple auth guards
+  if (authState === 'loading') {
+    return <LoadingState message="Loading support..." />
+  }
+
+  if (needsAuth) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/auth/login'
+    }
+    return <LoadingState message="Redirecting to login..." />
+  }
+
+  if (needsOrg) {
+    if (typeof window !== 'undefined') {
+      window.location.href = '/dashboard/organization/setup'
+    }
+    return <LoadingState message="Setting up your organization..." />
+  }
+
+  if (!isAuthenticated) {
+    return <ErrorState message="Authentication failed" />
+  }
   const [activeTab, setActiveTab] = useState('help')
   const [ticketForm, setTicketForm] = useState({
     subject: '',

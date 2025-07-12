@@ -18,35 +18,7 @@ export const createSupabaseServerClient = async () => {
     url: supabaseUrl
   })
 
-  return createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      getSession: async () => {
-        const authToken = cookieStore.get(`sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`)
-        console.log('🔗 [Supabase-Server] Auth token check:', {
-          hasToken: !!authToken,
-          tokenLength: authToken?.value?.length
-        })
-
-        if (!authToken) {
-          console.log('🔗 [Supabase-Server] No auth token found')
-          return { data: { session: null }, error: null }
-        }
-
-        try {
-          const session = JSON.parse(authToken.value)
-          console.log('🔗 [Supabase-Server] Session parsed successfully:', {
-            hasSession: !!session,
-            hasUser: !!session?.user,
-            userId: session?.user?.id
-          })
-          return { data: { session }, error: null }
-        } catch (error) {
-          console.log('🔗 [Supabase-Server] Failed to parse session:', error)
-          return { data: { session: null }, error: null }
-        }
-      }
-    }
-  })
+  return createClient(supabaseUrl, supabaseAnonKey)
 }
 
 // Admin client for server-side operations (same as in supabase.ts but isolated)

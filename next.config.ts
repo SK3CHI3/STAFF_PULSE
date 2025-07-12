@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   experimental: {
-    optimizeCss: true,
+    optimizeCss: true, // Re-enabled after installing critters dependency
   },
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',

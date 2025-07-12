@@ -321,7 +321,7 @@ export function useAuth() {
             console.log('🔐 [Auth] Profile fetched:', {
               hasProfile: !!profileData,
               profileId: profileData?.id,
-              hasOrg: !!profileData?.organization?.id
+              hasOrg: !!(profileData?.organization as any)?.id
             })
             setProfile(profileData)
           }
@@ -368,7 +368,7 @@ export function useAuth() {
           if (isMounted) {
             console.log('🔐 [Auth] Auth change - profile fetched:', {
               hasProfile: !!profileData,
-              hasOrg: !!profileData?.organization?.id
+              hasOrg: !!(profileData?.organization as any)?.id
             })
             setProfile(profileData)
           }

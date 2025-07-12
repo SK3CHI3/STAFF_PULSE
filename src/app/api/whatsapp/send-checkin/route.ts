@@ -7,10 +7,17 @@ function getTwilioClient() {
   const accountSid = process.env.TWILIO_ACCOUNT_SID
   const authToken = process.env.TWILIO_AUTH_TOKEN
 
+  console.log('📱 [Twilio] Checking credentials...')
+  console.log('📱 [Twilio] Account SID:', accountSid ? `${accountSid.substring(0, 10)}...` : 'MISSING')
+  console.log('📱 [Twilio] Auth Token:', authToken ? 'SET' : 'MISSING')
+  console.log('📱 [Twilio] WhatsApp Number:', process.env.TWILIO_WHATSAPP_NUMBER)
+
   if (!accountSid || !authToken || accountSid.startsWith('your_') || authToken.startsWith('your_')) {
+    console.error('❌ [Twilio] Credentials not configured properly')
     throw new Error('Twilio credentials not configured properly')
   }
 
+  console.log('✅ [Twilio] Credentials validated, creating client')
   return twilio(accountSid, authToken)
 }
 
@@ -30,8 +37,11 @@ const MESSAGE_TEMPLATES = {
 
 // Send mood check-in to specific employee
 async function sendMoodCheckin(employeeId: string, messageType: 'daily' | 'weekly' | 'biweekly' = 'weekly') {
+  console.log('📱 [Send Check-in] Sending to employee:', employeeId)
+
   try {
     // Get employee details
+    console.log('📱 [Send Check-in] Fetching employee details...')
     const { data: employee, error: employeeError } = await supabaseAdmin
       .from('employees')
       .select(`
@@ -43,24 +53,41 @@ async function sendMoodCheckin(employeeId: string, messageType: 'daily' | 'weekl
       .single()
 
     if (employeeError || !employee) {
+      console.error('❌ [Send Check-in] Employee not found:', employeeId, employeeError)
       return { success: false, error: 'Employee not found' }
     }
 
+    console.log('📱 [Send Check-in] Employee found:', {
+      id: employee.id,
+      name: employee.first_name,
+      phone: employee.phone,
+      org: employee.organization_id
+    })
+
     // Get message template
     const language = employee.language_preference || 'en'
-    const template = MESSAGE_TEMPLATES[language as keyof typeof MESSAGE_TEMPLATES]?.[messageType] || 
+    const template = MESSAGE_TEMPLATES[language as keyof typeof MESSAGE_TEMPLATES]?.[messageType] ||
                     MESSAGE_TEMPLATES.en[messageType]
 
     // Personalize message
     const message = template.replace('{name}', employee.first_name)
+    console.log('📱 [Send Check-in] Message prepared:', message)
 
     // Send WhatsApp message
+    console.log('📱 [Send Check-in] Initializing Twilio client...')
     const twilioClient = getTwilioClient()
+
+    console.log('📱 [Send Check-in] Sending WhatsApp message...')
+    console.log('📱 [Send Check-in] From:', process.env.TWILIO_WHATSAPP_NUMBER)
+    console.log('📱 [Send Check-in] To:', `whatsapp:${employee.phone}`)
+
     const response = await twilioClient.messages.create({
       from: process.env.TWILIO_WHATSAPP_NUMBER,
       to: `whatsapp:${employee.phone}`,
       body: message
     })
+
+    console.log('✅ [Send Check-in] Message sent successfully, SID:', response.sid)
 
     // Log the outbound message
     await supabaseAdmin
@@ -93,6 +120,8 @@ async function sendMoodCheckin(employeeId: string, messageType: 'daily' | 'weekl
 
 // Send check-ins to multiple employees
 async function sendBulkCheckins(organizationId: string, employeeIds?: string[], messageType: 'daily' | 'weekly' | 'biweekly' = 'weekly') {
+  console.log('📱 [Bulk Check-in] Starting bulk send for org:', organizationId)
+
   try {
     // Get employees to send to
     let query = supabaseAdmin
@@ -102,26 +131,46 @@ async function sendBulkCheckins(organizationId: string, employeeIds?: string[], 
       .eq('is_active', true)
 
     if (employeeIds && employeeIds.length > 0) {
+      console.log('📱 [Bulk Check-in] Filtering to specific employees:', employeeIds)
       query = query.in('id', employeeIds)
     }
 
+    console.log('📱 [Bulk Check-in] Fetching employees from database...')
     const { data: employees, error } = await query
 
     if (error || !employees) {
+      console.error('❌ [Bulk Check-in] Failed to fetch employees:', error)
       return { success: false, error: 'Failed to fetch employees' }
     }
 
+    console.log('📱 [Bulk Check-in] Found employees:', employees.length)
+    console.log('📱 [Bulk Check-in] Employee details:', employees.map(e => ({ id: e.id, name: e.first_name, phone: e.phone })))
+
     // Send check-ins to all employees
+    console.log('📱 [Bulk Check-in] Sending messages to all employees...')
     const results = await Promise.allSettled(
       employees.map(employee => sendMoodCheckin(employee.id, messageType))
     )
 
     // Count successes and failures
-    const successful = results.filter(result => 
+    const successful = results.filter(result =>
       result.status === 'fulfilled' && result.value.success
     ).length
 
     const failed = results.length - successful
+
+    // Log detailed results
+    console.log('📱 [Bulk Check-in] Results summary:', { total: employees.length, successful, failed })
+    results.forEach((result, index) => {
+      const employee = employees[index]
+      if (result.status === 'fulfilled' && result.value.success) {
+        console.log(`✅ [Bulk Check-in] Success for ${employee.first_name} (${employee.phone})`)
+      } else {
+        const error = result.status === 'rejected' ? result.reason :
+                     (result.status === 'fulfilled' && !result.value.success ? result.value.error : 'Unknown error')
+        console.error(`❌ [Bulk Check-in] Failed for ${employee.first_name} (${employee.phone}):`, error)
+      }
+    })
 
     return {
       success: true,
@@ -131,7 +180,7 @@ async function sendBulkCheckins(organizationId: string, employeeIds?: string[], 
       results: results.map((result, index) => ({
         employee: employees[index],
         success: result.status === 'fulfilled' && result.value.success,
-        error: result.status === 'rejected' ? result.reason : 
+        error: result.status === 'rejected' ? result.reason :
                (result.status === 'fulfilled' && !result.value.success ? result.value.error : null)
       }))
     }
@@ -199,57 +248,75 @@ async function sendScheduledCheckins(scheduleId: string) {
 
 // Main API handler
 export async function POST(request: NextRequest) {
+  console.log('📱 [WhatsApp API] Received check-in request')
+
   try {
-    const { 
-      type, 
-      organizationId, 
-      employeeId, 
-      employeeIds, 
-      scheduleId, 
-      messageType = 'weekly' 
-    } = await request.json()
+    const body = await request.json()
+    console.log('📱 [WhatsApp API] Request body:', body)
+
+    const {
+      type,
+      organizationId,
+      employeeId,
+      employeeIds,
+      scheduleId,
+      messageType = 'weekly'
+    } = body
 
     // Validate required parameters
     if (!type) {
+      console.error('❌ [WhatsApp API] Missing type parameter')
       return NextResponse.json({ error: 'Type is required' }, { status: 400 })
     }
 
+    console.log('📱 [WhatsApp API] Processing type:', type)
     let result
 
     switch (type) {
       case 'single':
         if (!employeeId) {
+          console.error('❌ [WhatsApp API] Missing employeeId for single type')
           return NextResponse.json({ error: 'Employee ID is required' }, { status: 400 })
         }
+        console.log('📱 [WhatsApp API] Sending to single employee:', employeeId)
         result = await sendMoodCheckin(employeeId, messageType)
         break
 
       case 'bulk':
         if (!organizationId) {
+          console.error('❌ [WhatsApp API] Missing organizationId for bulk type')
           return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
         }
+        console.log('📱 [WhatsApp API] Sending bulk to organization:', organizationId)
         result = await sendBulkCheckins(organizationId, employeeIds, messageType)
         break
 
       case 'scheduled':
         if (!scheduleId) {
+          console.error('❌ [WhatsApp API] Missing scheduleId for scheduled type')
           return NextResponse.json({ error: 'Schedule ID is required' }, { status: 400 })
         }
+        console.log('📱 [WhatsApp API] Sending scheduled:', scheduleId)
         result = await sendScheduledCheckins(scheduleId)
         break
 
       default:
+        console.error('❌ [WhatsApp API] Invalid type:', type)
         return NextResponse.json({ error: 'Invalid type' }, { status: 400 })
     }
 
+    console.log('📱 [WhatsApp API] Operation result:', result)
+
     if (!result.success) {
+      console.error('❌ [WhatsApp API] Operation failed:', result.error)
       return NextResponse.json({ error: result.error }, { status: 400 })
     }
 
-    return NextResponse.json({ success: true, data: result })
+    console.log('✅ [WhatsApp API] Operation successful')
+    return NextResponse.json(result)
 
   } catch (error) {
-    console.error('API error:', error)
+    console.error('❌ [WhatsApp API] Unexpected error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

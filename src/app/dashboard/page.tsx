@@ -13,20 +13,7 @@ import { setHours, setMinutes } from 'date-fns';
 function Dashboard() {
   const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
 
-  console.log('📊 [Dashboard] Component render:', {
-    authState,
-    hasProfile: !!profile,
-    isAuthenticated,
-    needsAuth,
-    needsOrg,
-    orgId: profile?.organization?.id,
-    profileData: profile ? {
-      id: profile.id,
-      email: profile.email,
-      organization_id: profile.organization_id,
-      organization: profile.organization
-    } : null
-  })
+
   const [loading, setLoading] = useState(false)
   const [timeRange, setTimeRange] = useState('30d')
   const [showCheckinModal, setShowCheckinModal] = useState(false)
@@ -225,21 +212,17 @@ function Dashboard() {
   const loadDashboardData = useCallback(async (orgId?: string) => {
     // Use passed orgId or get from current profile
     const organizationId = orgId || profile?.organization?.id;
-    console.log('📊 [Dashboard] Loading dashboard data for org:', organizationId)
 
     if (!organizationId) {
-      console.warn('📊 [Dashboard] No organization ID available')
       return
     }
 
     if (loading) {
-      console.log('📊 [Dashboard] Already loading, skipping')
       return // Prevent multiple simultaneous calls
     }
 
     setLoading(true)
     try {
-      console.log('📊 [Dashboard] Starting data fetch operations...')
       // Use Promise.allSettled to prevent one failure from stopping others
       const results = await Promise.allSettled([
         fetchEmployeeStats(organizationId),
@@ -249,18 +232,13 @@ function Dashboard() {
       ])
 
       // Log any failures but don't crash
-      const operations = ['Employee Stats', 'Alerts', 'Recent Responses', 'Mood Trends']
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
-          console.error(`📊 [Dashboard] ${operations[index]} failed:`, result.reason)
-        } else {
-          console.log(`📊 [Dashboard] ${operations[index]} loaded successfully`)
+          console.error(`Dashboard data fetch ${index} failed:`, result.reason)
         }
       })
-
-      console.log('📊 [Dashboard] All data fetch operations completed')
     } catch (error) {
-      console.error('📊 [Dashboard] Error loading dashboard data:', error)
+      console.error('Error loading dashboard data:', error)
     } finally {
       setLoading(false)
     }
@@ -269,18 +247,8 @@ function Dashboard() {
   // Load dashboard data when profile is available - SINGLE useEffect
   useEffect(() => {
     const orgId = profile?.organization?.id;
-    console.log('📊 [Dashboard] useEffect triggered:', {
-      hasProfile: !!profile,
-      hasOrg: !!orgId,
-      orgId: orgId,
-      loading
-    })
-
     if (orgId) {
-      console.log('📊 [Dashboard] Conditions met, loading dashboard data')
       loadDashboardData(orgId) // Pass orgId explicitly
-    } else {
-      console.log('📊 [Dashboard] Conditions not met for loading data')
     }
   }, [profile?.organization?.id]);
 
@@ -356,10 +324,12 @@ function Dashboard() {
   }
 
   const handleSendCheckin = async () => {
+    console.log('🚀 [Check-in] Starting check-in send process...')
     setSaving(true);
     setShowCheckinModal(false);
     try {
       if (sendType === 'schedule') {
+        console.log('📅 [Check-in] Scheduling check-in...')
         // Call API to schedule (with recurrence)
         const profileStr = localStorage.getItem('profile');
         let orgId = '', userId = '';
@@ -371,6 +341,7 @@ function Dashboard() {
           } catch {}
         }
         if (!orgId || !userId) {
+          console.error('❌ [Check-in] Missing organization or user ID')
           setToast({ message: 'User or organization not found. Please log in again.', type: 'error' });
           setSaving(false);
           return;
@@ -384,20 +355,63 @@ function Dashboard() {
           recurrence,
           day_of_week: recurrence === 'weekly' ? dayOfWeek : null,
         };
-        console.log('Schedule payload:', payload);
+        console.log('📅 [Check-in] Schedule payload:', payload);
         const res = await fetch('/api/checkins/schedule', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
         if (res.ok) {
+          console.log('✅ [Check-in] Schedule created successfully')
           setToast({ message: 'Check-in scheduled!', type: 'success' });
         } else {
           const result = await res.json();
+          console.error('❌ [Check-in] Schedule failed:', result.error)
           setToast({ message: result.error || 'Failed to schedule check-in', type: 'error' });
         }
       } else {
-        setToast({ message: 'Check-in sent!', type: 'success' });
+        console.log('📱 [Check-in] Sending immediate check-in...')
+        // Send immediate check-in
+        const orgId = profile?.organization?.id;
+        console.log('📱 [Check-in] Organization ID:', orgId)
+
+        if (!orgId) {
+          console.error('❌ [Check-in] No organization ID found')
+          setToast({ message: 'Organization not found. Please refresh and try again.', type: 'error' });
+          setSaving(false);
+          return;
+        }
+
+        const payload = {
+          type: 'bulk',
+          organizationId: orgId,
+          messageType: 'weekly'
+        };
+
+        console.log('📱 [Check-in] WhatsApp API payload:', payload);
+        const res = await fetch('/api/whatsapp/send-checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        console.log('📱 [Check-in] API response status:', res.status)
+        const result = await res.json();
+        console.log('📱 [Check-in] API response data:', result)
+
+        if (result.success) {
+          console.log('✅ [Check-in] Messages sent successfully:', result.successful)
+          setToast({
+            message: `Check-in sent to ${result.successful || 0} employees!`,
+            type: 'success'
+          });
+        } else {
+          console.error('❌ [Check-in] Send failed:', result.error)
+          setToast({
+            message: result.error || 'Failed to send check-in',
+            type: 'error'
+          });
+        }
       }
     } catch (err) {
       setToast({ message: 'An error occurred. Please try again.', type: 'error' });

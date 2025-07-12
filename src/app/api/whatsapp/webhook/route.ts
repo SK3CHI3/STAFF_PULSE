@@ -24,11 +24,16 @@ function verifyTwilioSignature(signature: string, url: string, params: any): boo
 
 // Process mood response from WhatsApp
 async function processMoodResponse(from: string, body: string, messageId: string) {
+  console.log('📱 [Mood Response] Processing response from:', from)
+  console.log('📱 [Mood Response] Message body:', body)
+
   try {
     // Clean phone number (remove whatsapp: prefix)
     const phoneNumber = from.replace('whatsapp:', '')
-    
+    console.log('📱 [Mood Response] Cleaned phone number:', phoneNumber)
+
     // Find employee by phone number with organization details
+    console.log('📱 [Mood Response] Looking up employee in database...')
     const { data: employee, error: employeeError } = await supabaseAdmin
       .from('employees')
       .select(`
@@ -40,7 +45,7 @@ async function processMoodResponse(from: string, body: string, messageId: string
       .single()
 
     if (employeeError || !employee) {
-      console.error('Employee not found:', phoneNumber, employeeError)
+      console.error('❌ [Mood Response] Employee not found:', phoneNumber, employeeError)
 
       // Log unknown number attempt
       await supabaseAdmin
@@ -59,21 +64,33 @@ async function processMoodResponse(from: string, body: string, messageId: string
       return { success: false, error: 'Employee not found' }
     }
 
+    console.log('✅ [Mood Response] Employee found:', {
+      id: employee.id,
+      name: `${employee.first_name} ${employee.last_name}`,
+      org: employee.organization_id,
+      anonymous: employee.anonymity_preference
+    })
+
     // Check if organization is active
     const organization = employee.organization as any
     if (organization?.subscription_status !== 'active') {
-      console.error('Organization inactive:', employee.organization_id)
+      console.error('❌ [Mood Response] Organization inactive:', employee.organization_id)
       return { success: false, error: 'Organization subscription inactive' }
     }
+
+    console.log('✅ [Mood Response] Organization is active')
 
     // Parse mood score from response
     let moodScore: number | null = null
     let responseText = body.trim()
-    
+
+    console.log('📱 [Mood Response] Parsing mood from text:', responseText)
+
     // Extract number from response (1-5)
     const numberMatch = responseText.match(/[1-5]/)
     if (numberMatch) {
       moodScore = parseInt(numberMatch[0])
+      console.log('📱 [Mood Response] Found mood score:', moodScore)
     }
 
     // If no number found, try to parse text sentiment
@@ -97,26 +114,32 @@ async function processMoodResponse(from: string, body: string, messageId: string
     const sentimentLabel = getSentimentLabel(sentimentScore)
 
     // Store mood check-in
+    console.log('📱 [Mood Response] Storing check-in to database...')
+    const checkinData = {
+      organization_id: employee.organization_id,
+      employee_id: employee.id,
+      mood_score: moodScore,
+      response_text: responseText,
+      sentiment_score: sentimentScore,
+      sentiment_label: sentimentLabel,
+      is_anonymous: employee.anonymity_preference,
+      whatsapp_message_id: messageId,
+      check_in_type: 'scheduled'
+    }
+    console.log('📱 [Mood Response] Check-in data:', checkinData)
+
     const { data: checkin, error: checkinError } = await supabaseAdmin
       .from('mood_checkins')
-      .insert({
-        organization_id: employee.organization_id,
-        employee_id: employee.id,
-        mood_score: moodScore,
-        response_text: responseText,
-        sentiment_score: sentimentScore,
-        sentiment_label: sentimentLabel,
-        is_anonymous: employee.anonymity_preference,
-        whatsapp_message_id: messageId,
-        check_in_type: 'scheduled'
-      })
+      .insert(checkinData)
       .select()
       .single()
 
     if (checkinError) {
-      console.error('Failed to store check-in:', checkinError)
+      console.error('❌ [Mood Response] Failed to store check-in:', checkinError)
       return { success: false, error: 'Failed to store response' }
     }
+
+    console.log('✅ [Mood Response] Check-in stored successfully:', checkin.id)
 
     // Log WhatsApp message
     await supabaseAdmin
@@ -357,34 +380,51 @@ async function sendWhatsAppMessage(
 
 // Main webhook handler
 export async function POST(request: NextRequest) {
+  console.log('📱 [WhatsApp Webhook] Received incoming message')
+
   try {
     const body = await request.text()
     const params = new URLSearchParams(body)
-    
+
+    console.log('📱 [WhatsApp Webhook] Raw body:', body)
+    console.log('📱 [WhatsApp Webhook] Parsed params:', Object.fromEntries(params))
+
     // Verify Twilio signature
     const signature = request.headers.get('x-twilio-signature') || ''
     const url = request.url
-    
+
+    console.log('📱 [WhatsApp Webhook] Verifying signature...')
     if (!verifyTwilioSignature(signature, url, Object.fromEntries(params))) {
+      console.error('❌ [WhatsApp Webhook] Invalid signature')
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
     }
+    console.log('✅ [WhatsApp Webhook] Signature verified')
 
     // Extract message data
     const from = params.get('From') || ''
     const messageBody = params.get('Body') || ''
     const messageId = params.get('MessageSid') || ''
 
+    console.log('📱 [WhatsApp Webhook] Message details:', {
+      from,
+      body: messageBody,
+      messageId
+    })
+
     // Process the mood response
+    console.log('📱 [WhatsApp Webhook] Processing mood response...')
     const result = await processMoodResponse(from, messageBody, messageId)
 
     if (!result.success) {
+      console.error('❌ [WhatsApp Webhook] Processing failed:', result.error)
       return NextResponse.json({ error: result.error }, { status: 400 })
     }
 
+    console.log('✅ [WhatsApp Webhook] Response processed successfully')
     return NextResponse.json({ success: true, data: result.checkin })
 
   } catch (error) {
-    console.error('Webhook error:', error)
+    console.error('❌ [WhatsApp Webhook] Unexpected error:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

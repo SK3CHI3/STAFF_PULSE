@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/auth'
+import { useAuth } from '@/contexts/AuthContext'
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter

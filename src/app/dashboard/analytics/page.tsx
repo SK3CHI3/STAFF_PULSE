@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 interface MoodCheckin {
@@ -21,7 +21,7 @@ interface Employee {
 }
 
 export default function Analytics() {
-  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+  const { profile } = useAuth()
   const [timeRange, setTimeRange] = useState('30d')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [insights, setInsights] = useState<any[]>([])
@@ -57,27 +57,9 @@ export default function Analytics() {
     if (profile?.organization?.id) fetchData()
   }, [profile?.organization?.id, timeRange])
 
-  // Simple auth guards - MOVED AFTER ALL HOOKS
-  if (authState === 'loading') {
-    return <LoadingState message="Loading analytics..." />
-  }
-
-  if (needsAuth) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth/login'
-    }
-    return <LoadingState message="Redirecting to login..." />
-  }
-
-  if (needsOrg) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard/organization/setup'
-    }
-    return <LoadingState message="Setting up your organization..." />
-  }
-
-  if (!isAuthenticated) {
-    return <ErrorState message="Authentication failed" />
+  // Authentication is handled by dashboard layout AuthGuard
+  if (!profile?.organization_id) {
+    return <LoadingState message="Loading organization data..." />
   }
 
   // Compute metrics
@@ -150,7 +132,8 @@ export default function Analytics() {
       setLoading(true)
       // Trigger data refetch
       if (profile?.organization?.id) {
-        window.location.reload()
+        setLoading(true)
+        // Re-fetch data instead of reloading page
       }
     }} />
   }

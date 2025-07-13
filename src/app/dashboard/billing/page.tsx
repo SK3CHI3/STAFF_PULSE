@@ -2,7 +2,8 @@
 
 import { Fragment, useState, useEffect, useRef } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
-import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
 import { formatKES, formatDate } from '@/lib/utils'
 
@@ -50,7 +51,9 @@ const PLAN_CONFIG = {
 export default function Billing() {
   // All hooks at the top, before any return
   const paymentButtonRef = useRef<HTMLButtonElement | null>(null)
-  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+  const planUpgradeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const router = useRouter()
+  const { profile } = useAuth()
   const [org, setOrg] = useState<any>(null)
   const [employeeCount, setEmployeeCount] = useState<number>(0)
   const [loading, setLoading] = useState(false)
@@ -143,13 +146,95 @@ export default function Billing() {
     }
   }, [profile?.organization?.id])
 
-  // IntaSend SDK Loading - Using installed package
+  // Initialize IntaSend with event handlers - Following official docs
+  const initializeIntaSend = () => {
+    try {
+      console.log('🔧 Initializing IntaSend with key:', process.env.NEXT_PUBLIC_INTASEND_PUBLIC_API_KEY?.substring(0, 20) + '...')
+
+      // Initialize exactly as per IntaSend docs
+      new (window as any).IntaSend({
+        publicAPIKey: process.env.NEXT_PUBLIC_INTASEND_PUBLIC_API_KEY,
+        live: false
+      })
+      .on('COMPLETE', async (results: any) => {
+        console.log('🎉 [INTASEND EVENT] Payment COMPLETE received!')
+        console.log('🎉 [INTASEND EVENT] Payment results:', results)
+        setPaymentStatus('verifying')
+        setPaymentInProgress(false)
+
+        try {
+          console.log('🎉 [INTASEND EVENT] Processing payment success...')
+          await handlePaymentSuccess(results)
+          console.log('🎉 [INTASEND EVENT] Payment success handled successfully')
+        } catch (error) {
+          console.error('❌ [INTASEND EVENT] Error handling payment success:', error)
+          setPaymentStatus('failed')
+          setPaymentError('Payment completed but failed to update subscription. Please contact support.')
+        }
+      })
+      .on('FAILED', (results: any) => {
+        console.error('❌ [INTASEND EVENT] Payment FAILED received!')
+        console.error('❌ [INTASEND EVENT] Failure results:', results)
+        setPaymentStatus('failed')
+        setPaymentInProgress(false)
+        setPaymentError(`Payment failed: ${results.error || results.message || 'Please try again.'}`)
+      })
+      .on('IN-PROGRESS', () => {
+        console.log('⏳ [INTASEND EVENT] Payment IN-PROGRESS received!')
+        setPaymentStatus('processing')
+        setPaymentInProgress(true)
+      })
+
+      console.log('✅ IntaSend initialized successfully')
+
+      // Debug payment buttons
+      setTimeout(() => {
+        const paymentButtons = document.querySelectorAll('.intaSendPayButton')
+        console.log('💳 [DEBUG] Found payment buttons:', paymentButtons.length)
+        paymentButtons.forEach((btn, index) => {
+          const amount = btn.getAttribute('data-amount')
+          const currency = btn.getAttribute('data-currency')
+          const email = btn.getAttribute('data-email')
+          const apiRef = btn.getAttribute('data-api_ref')
+          const comment = btn.getAttribute('data-comment')
+
+          console.log(`💳 [DEBUG] Button ${index}:`, {
+            amount,
+            currency,
+            email,
+            apiRef,
+            comment,
+            className: btn.className,
+            id: btn.id || 'no-id'
+          })
+
+          if (!amount || amount === '0') {
+            console.warn(`⚠️ [DEBUG] Button ${index} has invalid amount: ${amount}`)
+          } else {
+            console.log(`✅ [DEBUG] Button ${index} has valid amount: ${amount}`)
+          }
+        })
+
+        // Also check if our specific refs are working
+        console.log('💳 [DEBUG] Payment button refs:')
+        console.log('💳 [DEBUG] paymentButtonRef.current:', paymentButtonRef.current)
+        console.log('💳 [DEBUG] planUpgradeButtonRef.current:', planUpgradeButtonRef.current)
+      }, 1000)
+    } catch (error) {
+      console.error('❌ Error initializing IntaSend:', error)
+      setPaymentError('Payment system failed to initialize. Please refresh the page.')
+    }
+  }
+
+  // IntaSend SDK Loading - Load AFTER org data is available
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    // Only initialize IntaSend after org data is loaded
+    if (!org || typeof window === 'undefined') return
 
     // Check if SDK is already loaded
     if ((window as any).IntaSend) {
       console.log('✅ IntaSend SDK already loaded')
+      initializeIntaSend()
       return
     }
 
@@ -175,79 +260,16 @@ export default function Billing() {
         console.error('❌ Failed to import IntaSend SDK:', error)
         setPaymentError('Payment system failed to load. Please refresh the page and try again.')
       })
+  }, [org]) // Add org as dependency
 
-    // Initialize IntaSend with event handlers
-    const initializeIntaSend = () => {
-      try {
-        // Initialize the payment button functionality
-        const intaSend = new (window as any).IntaSend({
-          publicAPIKey: process.env.NEXT_PUBLIC_INTASEND_PUBLIC_API_KEY,
-          live: false
-        })
-
-        // Set up global event handlers for payment completion
-        intaSend
-          .on('COMPLETE', async (results: any) => {
-            console.log('✅ Payment completed successfully:', results)
-            setPaymentStatus('verifying')
-            setPaymentInProgress(false)
-
-            try {
-              // Verify payment and update subscription
-              await handlePaymentSuccess(results)
-            } catch (error) {
-              console.error('❌ Error handling payment success:', error)
-              setPaymentStatus('failed')
-              setPaymentError('Payment completed but failed to update subscription. Please contact support.')
-            }
-          })
-          .on('FAILED', (results: any) => {
-            console.error('❌ Payment failed:', results)
-            setPaymentStatus('failed')
-            setPaymentInProgress(false)
-            setPaymentError(`Payment failed: ${results.error || results.message || 'Please try again.'}`)
-          })
-          .on('IN-PROGRESS', () => {
-            console.log('⏳ Payment in progress...')
-            setPaymentStatus('processing')
-            setPaymentInProgress(true)
-          })
-          .on('CANCELLED', () => {
-            console.log('🚫 Payment cancelled by user')
-            setPaymentStatus('cancelled')
-            setPaymentInProgress(false)
-            setPaymentError('Payment was cancelled. You can try again anytime.')
-          })
-
-        console.log('✅ IntaSend initialized with event handlers')
-      } catch (error) {
-        console.error('❌ Error initializing IntaSend:', error)
-        setPaymentError('Payment system failed to initialize. Please refresh the page.')
-      }
-    }
-  }, [])
-
-  // Simple auth guards
-  if (authState === 'loading') {
-    return <LoadingState message="Loading billing..." />
+  // Authentication is handled by dashboard layout AuthGuard
+  if (!profile?.organization_id) {
+    return <LoadingState message="Loading organization data..." />
   }
 
-  if (needsAuth) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth/login'
-    }
-    return <LoadingState message="Redirecting to login..." />
-  }
-
-  if (needsOrg) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard/organization/setup'
-    }
-    return <LoadingState message="Setting up your organization..." />
-  }
-
-  if (!isAuthenticated) {
-    return <ErrorState message="Authentication failed" />
+  // Wait for org data to load
+  if (!org) {
+    return <LoadingState message="Loading billing information..." />
   }
 
 
@@ -287,16 +309,20 @@ export default function Billing() {
 
 
   // Helper: Validate payment button data
-  function validatePaymentData() {
+  function validatePaymentData(customPrice?: number, customCurrency?: string) {
     if (!org) return { valid: false, error: 'Organization data not loaded.' }
-    if (planPrice === 0) return { valid: false, error: 'No payment required for free plan.' }
-    if (!planPrice || isNaN(planPrice) || planPrice <= 0) return { valid: false, error: 'Invalid amount.' }
-    if (!planCurrency) return { valid: false, error: 'Currency is required.' }
+
+    const priceToCheck = customPrice !== undefined ? customPrice : planPrice
+    const currencyToCheck = customCurrency || planCurrency
+
+    if (priceToCheck === 0) return { valid: false, error: 'No payment required for free plan.' }
+    if (!priceToCheck || isNaN(priceToCheck) || priceToCheck <= 0) return { valid: false, error: 'Invalid amount.' }
+    if (!currencyToCheck) return { valid: false, error: 'Currency is required.' }
     if (!org.billing_email && !org.email) return { valid: false, error: 'Billing email is required.' }
     const email = org.billing_email || org.email
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { valid: false, error: 'Invalid billing email.' }
-    if (!org.phone) return { valid: false, error: 'Phone number is required.' }
-    if (!/^\+?\d{10,15}$/.test(org.phone)) return { valid: false, error: 'Invalid phone number format. Use +254...' }
+    // Phone is optional for card payments, but validate format if provided
+    if (org.phone && !/^\+?\d{10,15}$/.test(org.phone)) return { valid: false, error: 'Invalid phone number format. Use +254...' }
     if (!org.name) return { valid: false, error: 'Company name is required.' }
     if (typeof window === 'undefined' || !window.location.href) return { valid: false, error: 'Redirect URL is required.' }
     return { valid: true }
@@ -375,9 +401,9 @@ export default function Billing() {
       setBannerMessage('🎉 Payment successful! Your subscription has been updated and new features are now available.')
       setBannerType('success')
 
-      // Reload page after showing success message
+      // Refresh data after showing success message
       setTimeout(() => {
-        window.location.reload()
+        router.refresh()
       }, 3000)
 
     } catch (error: any) {
@@ -408,24 +434,43 @@ export default function Billing() {
     }
 
     console.log('💳 Triggering IntaSend Payment Button')
+    console.log('💳 Payment button ref:', paymentButtonRef.current)
+    console.log('💳 Payment data:', {
+      amount: planPrice,
+      currency: planCurrency,
+      email: org?.billing_email || org?.email
+    })
     setPaymentStatus('processing')
+    setPaymentInProgress(true)
 
     // Simply click the payment button - IntaSend SDK handles the rest
     if (paymentButtonRef.current) {
+      console.log('💳 Clicking payment button...')
       paymentButtonRef.current.click()
     } else {
+      console.error('❌ Payment button not found')
       setPaymentError('Payment button not found. Please refresh the page.')
       setPaymentStatus('failed')
+      setPaymentInProgress(false)
     }
   }
 
   // Handler for selecting a new plan
   const handleSelectPlan = async (planId: keyof typeof PLAN_CONFIG) => {
+    console.log('🎯 [PLAN SELECTION] Starting plan selection:', planId)
     setSelectPlanError(null)
     setSelectingPlan(planId)
     setPendingPlanId(planId)
     const selectedPlan = PLAN_CONFIG[planId]
+    console.log('🎯 [PLAN SELECTION] Selected plan details:', {
+      id: planId,
+      name: selectedPlan.name,
+      price: selectedPlan.price,
+      currency: selectedPlan.currency
+    })
+
     if (selectedPlan.price > 0) {
+      console.log('🎯 [PLAN SELECTION] Paid plan selected, showing confirmation dialog')
       // For paid plans, show confirmation dialog and do NOT update plan yet
       setShowPlanConfirm(true)
       setSelectingPlan(null)
@@ -443,7 +488,7 @@ export default function Billing() {
       setOrg((prev: any) => ({ ...prev, subscription_plan: planId }))
       setBannerMessage('Plan changed successfully!')
       setBannerType('success')
-      window.location.reload()
+      router.refresh()
     } catch (e: any) {
       setSelectPlanError(e.message || 'Failed to select plan')
       setBannerMessage(e.message || 'Failed to select plan')
@@ -454,7 +499,12 @@ export default function Billing() {
 
   // Handler for confirming paid plan in dialog
   const handleConfirmPaidPlan = async () => {
-    if (!pendingPlanId) return
+    console.log('💰 [PAYMENT CONFIRM] Starting payment confirmation for plan:', pendingPlanId)
+    if (!pendingPlanId) {
+      console.error('💰 [PAYMENT CONFIRM] No pending plan ID found!')
+      return
+    }
+
     setShowPlanConfirm(false)
     setSelectingPlan(pendingPlanId)
     setPaymentError(null)
@@ -462,40 +512,72 @@ export default function Billing() {
 
     try {
       const selectedPlan = PLAN_CONFIG[pendingPlanId as keyof typeof PLAN_CONFIG]
+      console.log('💰 [PAYMENT CONFIRM] Selected plan for payment:', {
+        id: pendingPlanId,
+        name: selectedPlan.name,
+        price: selectedPlan.price,
+        currency: selectedPlan.currency
+      })
 
       // Validate payment data for the new plan
-      const validation = validatePaymentData()
+      console.log('💰 [PAYMENT CONFIRM] Validating payment data for new plan...')
+      const validation = validatePaymentData(selectedPlan.price, selectedPlan.currency)
+      console.log('💰 [PAYMENT CONFIRM] Validation result:', validation)
       if (!validation.valid) {
+        console.error('💰 [PAYMENT CONFIRM] Validation failed:', validation.error)
         setSelectPlanError(validation.error || 'Invalid payment data')
         setSelectingPlan(null)
         return
       }
 
       // Check if IntaSend SDK is loaded
+      console.log('💰 [PAYMENT CONFIRM] Checking IntaSend SDK availability...')
       if (typeof window === 'undefined' || !(window as any).IntaSend) {
+        console.error('💰 [PAYMENT CONFIRM] IntaSend SDK not available!')
         setSelectPlanError('Payment system is still loading. Please wait a moment and try again.')
         setSelectingPlan(null)
         return
       }
+      console.log('💰 [PAYMENT CONFIRM] IntaSend SDK is available')
 
-      // Update the payment button with new plan data
-      if (paymentButtonRef.current) {
-        paymentButtonRef.current.setAttribute('data-amount', String(selectedPlan.price))
-        paymentButtonRef.current.setAttribute('data-currency', selectedPlan.currency)
-        paymentButtonRef.current.setAttribute('data-email', org.billing_email || org.email)
-        paymentButtonRef.current.setAttribute('data-phone_number', org.phone || '')
-        paymentButtonRef.current.setAttribute('data-first_name', org.name)
-        paymentButtonRef.current.setAttribute('data-api_ref', `plan_${pendingPlanId}_${org.id}_${Date.now()}`)
-        paymentButtonRef.current.setAttribute('data-redirect_url', window.location.href)
-        paymentButtonRef.current.setAttribute('data-comment', `Plan upgrade to ${selectedPlan.name}`)
+      // Update the plan upgrade payment button with new plan data
+      console.log('💰 [PAYMENT CONFIRM] Updating payment button with plan data...')
+      if (planUpgradeButtonRef.current) {
+        console.log('💰 [PAYMENT CONFIRM] Payment button ref found, updating attributes...')
 
-        console.log('💳 Triggering plan upgrade payment for:', selectedPlan.name)
+        const paymentData = {
+          amount: String(selectedPlan.price),
+          currency: selectedPlan.currency,
+          email: org.billing_email || org.email,
+          phone: org.phone || '',
+          firstName: org.name,
+          apiRef: `plan_${pendingPlanId}_${org.id}_${Date.now()}`,
+          redirectUrl: window.location.href,
+          comment: `Plan upgrade to ${selectedPlan.name}`
+        }
+
+        console.log('💰 [PAYMENT CONFIRM] Payment data to set:', paymentData)
+
+        planUpgradeButtonRef.current.setAttribute('data-amount', paymentData.amount)
+        planUpgradeButtonRef.current.setAttribute('data-currency', paymentData.currency)
+        planUpgradeButtonRef.current.setAttribute('data-email', paymentData.email)
+        planUpgradeButtonRef.current.setAttribute('data-phone_number', paymentData.phone)
+        planUpgradeButtonRef.current.setAttribute('data-first_name', paymentData.firstName)
+        planUpgradeButtonRef.current.setAttribute('data-api_ref', paymentData.apiRef)
+        planUpgradeButtonRef.current.setAttribute('data-redirect_url', paymentData.redirectUrl)
+        planUpgradeButtonRef.current.setAttribute('data-comment', paymentData.comment)
+
+        console.log('💰 [PAYMENT CONFIRM] Button attributes updated successfully')
+        console.log('💳 [PAYMENT TRIGGER] Triggering plan upgrade payment for:', selectedPlan.name)
         setPaymentStatus('processing')
 
         // Click the payment button - the global event handlers will take care of the rest
-        paymentButtonRef.current.click()
+        console.log('💳 [PAYMENT TRIGGER] Clicking payment button...')
+        planUpgradeButtonRef.current.click()
+        console.log('💳 [PAYMENT TRIGGER] Payment button clicked!')
       } else {
-        throw new Error('Payment button not found')
+        console.error('💰 [PAYMENT CONFIRM] Payment button ref not found!')
+        throw new Error('Plan upgrade payment button not found')
       }
 
     } catch (e: any) {
@@ -652,10 +734,11 @@ export default function Billing() {
                 <p className="font-semibold text-blue-700">{nextBillingDate}</p>
               </div>
               <div className="mt-4 space-y-2">
+                {/* Hidden IntaSend payment button for current plan renewals */}
                 <button
                   ref={paymentButtonRef}
                   type="button"
-                  className="intaSendPayButton hidden"
+                  className="intaSendPayButton absolute -left-[9999px] opacity-0 pointer-events-none"
                   data-amount={plan.price}
                   data-currency={plan.currency}
                   data-email={org.billing_email || org.email}
@@ -818,20 +901,20 @@ export default function Billing() {
               ))}
             </div>
           )}
-          <button 
-            ref={paymentButtonRef}
+          <button
+            ref={planUpgradeButtonRef}
             type="button"
-            className="intaSendPayButton hidden"
+            className="intaSendPayButton absolute -left-[9999px] opacity-0 pointer-events-none"
             data-amount={plan.price}
             data-currency={plan.currency}
             data-email={org.billing_email || org.email}
             data-phone_number={org.phone || ''}
             data-first_name={org.name}
-            data-api_ref={`sub_${org.id}_${Date.now()}`}
+            data-api_ref={`upgrade_${org.id}_${Date.now()}`}
             data-redirect_url={typeof window !== 'undefined' ? window.location.href : ''}
-            data-comment={`Subscription payment for ${plan.name}`}
+            data-comment={`Plan upgrade payment for ${plan.name}`}
           >
-            Add Payment Method
+            Plan Upgrade Payment
           </button>
           <button 
             className="w-full border-2 border-dashed border-gray-300 text-gray-600 py-4 px-4 rounded-lg hover:border-gray-400 hover:text-gray-700 transition-colors"

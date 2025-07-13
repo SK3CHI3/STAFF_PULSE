@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase } from '@/lib/supabase'
-import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 interface Employee {
@@ -28,13 +28,28 @@ interface Department {
 
 export default function Employees() {
   // ALL HOOKS MUST BE DECLARED FIRST - NO CONDITIONAL RETURNS BEFORE THIS
-  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+  const router = useRouter()
+  const { profile } = useAuth()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedDepartment, setSelectedDepartment] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
   const [showDeptModal, setShowDeptModal] = useState(false)
+  const [newDeptName, setNewDeptName] = useState('')
+  const [deptCreating, setDeptCreating] = useState(false)
+  const [newEmployee, setNewEmployee] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    department: '',
+    position: ''
+  })
+  const [empCreating, setEmpCreating] = useState(false)
+  const [csvFile, setCsvFile] = useState<File | null>(null)
+  const [csvImporting, setCsvImporting] = useState(false)
+  const [importResult, setImportResult] = useState<any>(null)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [departments, setDepartments] = useState<Department[]>([])
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
@@ -62,6 +77,156 @@ export default function Employees() {
     }
   }, [profile?.organization?.id]);
 
+  // Create department function
+  const handleCreateDepartment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeptName.trim() || !profile?.organization?.id) return;
+
+    setDeptCreating(true);
+    try {
+      const res = await fetch('/api/departments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: profile.organization.id,
+          name: newDeptName.trim()
+        })
+      });
+
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to create department');
+
+      // Reset form and close modal
+      setNewDeptName('');
+      setShowDeptModal(false);
+
+      // Refresh departments
+      await fetchDepartments();
+    } catch (error: any) {
+      alert(error.message || 'Failed to create department');
+    } finally {
+      setDeptCreating(false);
+    }
+  };
+
+  // Create employee function
+  const handleCreateEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmployee.first_name.trim() || !newEmployee.last_name.trim() || !newEmployee.phone.trim() || !profile?.organization?.id) return;
+
+    setEmpCreating(true);
+    try {
+      const res = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: profile.organization.id,
+          ...newEmployee
+        })
+      });
+
+      const result = await res.json();
+      if (!result.success) throw new Error(result.error || 'Failed to create employee');
+
+      // Reset form and close modal
+      setNewEmployee({
+        first_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+        department: '',
+        position: ''
+      });
+      setShowAddModal(false);
+
+      // Refresh employees
+      await fetchEmployees();
+    } catch (error: any) {
+      alert(error.message || 'Failed to create employee');
+    } finally {
+      setEmpCreating(false);
+    }
+  };
+
+  // Handle CSV file selection
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'text/csv') {
+      setCsvFile(file);
+      setImportResult(null);
+    } else {
+      alert('Please select a valid CSV file');
+    }
+  };
+
+  // Handle CSV import
+  const handleImportCSV = async () => {
+    if (!csvFile || !profile?.organization?.id) return;
+
+    setCsvImporting(true);
+    setImportResult(null);
+
+    try {
+      // Read file content
+      const fileContent = await csvFile.text();
+
+      // Send to API
+      const res = await fetch('/api/employees/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          organizationId: profile.organization.id,
+          csvData: fileContent
+        })
+      });
+
+      const result = await res.json();
+
+      if (!result.success) {
+        throw new Error(result.error || 'Import failed');
+      }
+
+      setImportResult(result);
+
+      // If successful, refresh employees
+      if (result.imported > 0) {
+        await fetchEmployees();
+      }
+
+    } catch (error: any) {
+      alert(error.message || 'Failed to import CSV');
+    } finally {
+      setCsvImporting(false);
+    }
+  };
+
+  // Download CSV template
+  const downloadTemplate = async () => {
+    try {
+      const res = await fetch('/api/employees/import', { method: 'GET' });
+      const csvContent = await res.text();
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'employee_import_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Failed to download template');
+    }
+  };
+
+  // Reset import modal
+  const resetImportModal = () => {
+    setCsvFile(null);
+    setImportResult(null);
+    setShowImportModal(false);
+  };
+
   // Fetch employees and departments from API
   const fetchEmployees = useCallback(async () => {
     if (!profile?.organization?.id) return;
@@ -84,8 +249,7 @@ export default function Employees() {
     } finally {
       setLoading(false);
     }
-    await fetchDepartments();
-  }, [profile?.organization?.id, selectedDepartment, selectedStatus, fetchDepartments]);
+  }, [profile?.organization?.id, selectedDepartment, selectedStatus]);
 
   // Memoize formatted last_response for each employee
   const employeesWithFormattedDates = useMemo(() => {
@@ -120,7 +284,8 @@ export default function Employees() {
 
   // Recalculate department counts whenever employees or departments change
   useEffect(() => {
-    if (!departments.length) return;
+    if (!departments.length || !employees.length) return;
+
     const deptCountMap: Record<string, number> = {};
     employees.forEach((emp: any) => {
       if (emp.department) {
@@ -128,11 +293,20 @@ export default function Employees() {
         deptCountMap[deptKey] = (deptCountMap[deptKey] || 0) + 1;
       }
     });
+
     setDepartments(prev => prev.map(d => {
       const deptKey = d.name.trim().toLowerCase();
-      return { ...d, count: deptCountMap[deptKey] || 0 };
+      const count = deptCountMap[deptKey] || 0;
+      return { ...d, count };
     }));
   }, [employees, departments.length]);
+
+  // Fetch departments initially
+  useEffect(() => {
+    if (profile?.organization?.id) {
+      fetchDepartments();
+    }
+  }, [profile?.organization?.id, fetchDepartments]);
 
   // Fetch employees when filters or profile change
   useEffect(() => {
@@ -141,27 +315,9 @@ export default function Employees() {
     }
   }, [profile?.organization?.id, selectedDepartment, selectedStatus, fetchEmployees]);
 
-  // NOW CONDITIONAL RETURNS ARE SAFE
-  if (authState === 'loading') {
-    return <LoadingState message="Loading employees..." />
-  }
-
-  if (needsAuth) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth/login'
-    }
-    return <LoadingState message="Redirecting to login..." />
-  }
-
-  if (needsOrg) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard/organization/setup'
-    }
-    return <LoadingState message="Setting up your organization..." />
-  }
-
-  if (!isAuthenticated) {
-    return <ErrorState message="Authentication failed" />
+  // Authentication is handled by dashboard layout AuthGuard
+  if (!profile?.organization_id) {
+    return <LoadingState message="Loading organization data..." />
   }
 
   if (loading) {
@@ -454,6 +610,333 @@ export default function Employees() {
           </div>
         </div>
       </main>
+
+      {/* Add Employee Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg mx-4 relative">
+            <button
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl"
+              onClick={() => {
+                setShowAddModal(false);
+                setNewEmployee({
+                  first_name: '',
+                  last_name: '',
+                  email: '',
+                  phone: '',
+                  department: '',
+                  position: ''
+                });
+              }}
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <h2 className="text-xl font-bold mb-6 text-gray-900">Add New Employee</h2>
+            <form onSubmit={handleCreateEmployee}>
+              <div className="grid grid-cols-2 gap-4 mb-4">
+                <div>
+                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-900 mb-2">
+                    First Name *
+                  </label>
+                  <input
+                    type="text"
+                    id="firstName"
+                    value={newEmployee.first_name}
+                    onChange={(e) => setNewEmployee(prev => ({ ...prev, first_name: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="John"
+                    required
+                    disabled={empCreating}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-900 mb-2">
+                    Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    id="lastName"
+                    value={newEmployee.last_name}
+                    onChange={(e) => setNewEmployee(prev => ({ ...prev, last_name: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="Doe"
+                    required
+                    disabled={empCreating}
+                  />
+                </div>
+              </div>
+              <div className="mb-4">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-900 mb-2">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  id="email"
+                  value={newEmployee.email}
+                  onChange={(e) => setNewEmployee(prev => ({ ...prev, email: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  placeholder="john.doe@company.com"
+                  disabled={empCreating}
+                />
+              </div>
+              <div className="mb-4">
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-900 mb-2">
+                  Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  id="phone"
+                  value={newEmployee.phone}
+                  onChange={(e) => setNewEmployee(prev => ({ ...prev, phone: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  placeholder="+254712345678"
+                  required
+                  disabled={empCreating}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <label htmlFor="department" className="block text-sm font-medium text-gray-900 mb-2">
+                    Department
+                  </label>
+                  <select
+                    id="department"
+                    value={newEmployee.department}
+                    onChange={(e) => setNewEmployee(prev => ({ ...prev, department: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    disabled={empCreating}
+                  >
+                    <option value="">Select Department</option>
+                    {departments.map(dept => (
+                      <option key={dept.id} value={dept.name}>{dept.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="position" className="block text-sm font-medium text-gray-900 mb-2">
+                    Position
+                  </label>
+                  <input
+                    type="text"
+                    id="position"
+                    value={newEmployee.position}
+                    onChange={(e) => setNewEmployee(prev => ({ ...prev, position: e.target.value }))}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                    placeholder="Software Developer"
+                    disabled={empCreating}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setNewEmployee({
+                      first_name: '',
+                      last_name: '',
+                      email: '',
+                      phone: '',
+                      department: '',
+                      position: ''
+                    });
+                  }}
+                  className="px-6 py-3 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+                  disabled={empCreating}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors"
+                  disabled={empCreating || !newEmployee.first_name.trim() || !newEmployee.last_name.trim() || !newEmployee.phone.trim()}
+                >
+                  {empCreating ? 'Adding...' : 'Add Employee'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Import CSV Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-lg mx-4 relative">
+            <button
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl"
+              onClick={resetImportModal}
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <h2 className="text-xl font-bold mb-6 text-gray-900">Import Employees from CSV</h2>
+
+            {!importResult ? (
+              <div>
+                <div className="mb-6">
+                  <p className="text-gray-600 mb-4">
+                    Upload a CSV file to bulk import employees. Make sure your CSV includes the required columns.
+                  </p>
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <h4 className="font-medium text-blue-900 mb-2">Required Columns:</h4>
+                    <ul className="text-sm text-blue-800 space-y-1">
+                      <li>• <strong>first_name</strong> (required)</li>
+                      <li>• <strong>last_name</strong> (required)</li>
+                      <li>• <strong>phone</strong> (required)</li>
+                      <li>• <strong>email</strong> (optional)</li>
+                      <li>• <strong>department</strong> (optional)</li>
+                      <li>• <strong>position</strong> (optional)</li>
+                    </ul>
+                  </div>
+
+                  <div className="mb-4">
+                    <button
+                      onClick={downloadTemplate}
+                      className="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center space-x-1"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <span>Download CSV Template</span>
+                    </button>
+                  </div>
+
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      id="csvFileInput"
+                    />
+                    <label htmlFor="csvFileInput" className="cursor-pointer">
+                      <svg className="w-12 h-12 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                      </svg>
+                      <p className="text-gray-600 mb-2">
+                        {csvFile ? csvFile.name : 'Click to select CSV file or drag and drop'}
+                      </p>
+                      <p className="text-sm text-gray-500">CSV files only</p>
+                    </label>
+                  </div>
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={resetImportModal}
+                    className="px-6 py-3 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+                    disabled={csvImporting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleImportCSV}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors"
+                    disabled={!csvFile || csvImporting}
+                  >
+                    {csvImporting ? 'Importing...' : 'Import Employees'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <div className="mb-6">
+                  <div className={`p-4 rounded-lg ${importResult.imported > 0 ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                    <h4 className={`font-medium mb-2 ${importResult.imported > 0 ? 'text-green-900' : 'text-red-900'}`}>
+                      Import Results
+                    </h4>
+                    <div className={`text-sm ${importResult.imported > 0 ? 'text-green-800' : 'text-red-800'}`}>
+                      <p>✅ Successfully imported: {importResult.imported} employees</p>
+                      {importResult.failed > 0 && (
+                        <p>❌ Failed to import: {importResult.failed} employees</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {importResult.errors && importResult.errors.length > 0 && (
+                    <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <h5 className="font-medium text-yellow-900 mb-2">Import Errors:</h5>
+                      <div className="text-sm text-yellow-800 max-h-32 overflow-y-auto">
+                        {importResult.errors.map((error: any, index: number) => (
+                          <p key={index}>Row {error.row}: {error.error}</p>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={resetImportModal}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Create Department Modal */}
+      {showDeptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md mx-4 relative">
+            <button
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 text-2xl"
+              onClick={() => {
+                setShowDeptModal(false);
+                setNewDeptName('');
+              }}
+              aria-label="Close"
+            >
+              &times;
+            </button>
+            <h2 className="text-xl font-bold mb-6 text-gray-900">Create New Department</h2>
+            <form onSubmit={handleCreateDepartment}>
+              <div className="mb-6">
+                <label htmlFor="deptName" className="block text-sm font-medium text-gray-900 mb-2">
+                  Department Name
+                </label>
+                <input
+                  type="text"
+                  id="deptName"
+                  value={newDeptName}
+                  onChange={(e) => setNewDeptName(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+                  placeholder="e.g., Engineering, Marketing, Sales"
+                  required
+                  disabled={deptCreating}
+                />
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDeptModal(false);
+                    setNewDeptName('');
+                  }}
+                  className="px-6 py-3 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors"
+                  disabled={deptCreating}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium transition-colors"
+                  disabled={deptCreating || !newDeptName.trim()}
+                >
+                  {deptCreating ? 'Creating...' : 'Create Department'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

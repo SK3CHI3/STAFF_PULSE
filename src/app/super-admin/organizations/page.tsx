@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { useAuth } from '@/lib/auth'
+import { useAuth } from '@/contexts/AuthContext'
+import { useRouter } from 'next/navigation'
 import { Building2, Users, Mail, Phone, MapPin, Edit, Trash2, Plus, RefreshCw, CheckCircle2, XCircle, ArrowDown, ArrowUp } from 'lucide-react'
 
 interface Organization {
@@ -31,6 +32,7 @@ export default function OrganizationsManagement() {
   const [error, setError] = useState<string | null>(null)
   
   const { profile, loading } = useAuth()
+  const router = useRouter()
 
   useEffect(() => {
     if (profile?.role === 'super_admin') {
@@ -311,7 +313,7 @@ export default function OrganizationsManagement() {
                           </button>
 
                           <button
-                            onClick={() => window.open(`/dashboard?org=${org.id}`, '_blank')}
+                            onClick={() => router.push(`/dashboard?org=${org.id}`)}
                             className="text-green-600 hover:text-green-800 p-1 rounded"
                             title="View Organization Dashboard"
                           >

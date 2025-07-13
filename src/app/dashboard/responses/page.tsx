@@ -1,12 +1,12 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useAuthGuard } from '@/hooks/useAuthGuard'
-import { LoadingState, ErrorState } from '@/components/LoadingState'
+import { useAuth } from '@/contexts/AuthContext'
+import { LoadingState } from '@/components/LoadingState'
 
 export default function Responses() {
   // ALL HOOKS MUST BE DECLARED FIRST - NO CONDITIONAL RETURNS BEFORE THIS
-  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+  const { profile } = useAuth()
   const [responses, setResponses] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -90,27 +90,9 @@ export default function Responses() {
       }))
   }, [responses, filterPeriod, filterMood, hasHydrated])
 
-  // NOW CONDITIONAL RETURNS ARE SAFE
-  if (authState === 'loading') {
-    return <LoadingState message="Loading responses..." />
-  }
-
-  if (needsAuth) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth/login'
-    }
-    return <LoadingState message="Redirecting to login..." />
-  }
-
-  if (needsOrg) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard/organization/setup'
-    }
-    return <LoadingState message="Setting up your organization..." />
-  }
-
-  if (!isAuthenticated) {
-    return <ErrorState message="Authentication failed" />
+  // Authentication is handled by dashboard layout AuthGuard
+  if (!profile?.organization_id) {
+    return <LoadingState message="Loading organization data..." />
   }
 
   // Use the memoized filtered responses

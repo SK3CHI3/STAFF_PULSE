@@ -2,23 +2,26 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import ErrorAlert from '@/components/ui/ErrorAlert'
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
     setIsLoading(true)
 
     try {
       // Import supabase directly for password reset
       const { supabase } = await import('@/lib/supabase')
-      const { error } = await supabase.auth.resetPasswordForEmail(email)
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email)
 
-      if (error) {
-        alert(error.message)
+      if (resetError) {
+        setError(resetError.message)
         setIsLoading(false)
         return
       }
@@ -27,7 +30,7 @@ export default function ForgotPassword() {
       setIsSubmitted(true)
     } catch (error) {
       console.error('Password reset error:', error)
-      alert('An error occurred. Please try again.')
+      setError('An error occurred. Please try again.')
       setIsLoading(false)
     }
   }
@@ -78,6 +81,20 @@ export default function ForgotPassword() {
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">Reset Password</h1>
                   <p className="text-gray-600">Enter your email to receive reset instructions</p>
                 </div>
+
+                {/* Error Message */}
+                <ErrorAlert
+                  error={error}
+                  onClose={() => setError(null)}
+                  className="mb-6"
+                />
+
+                {/* Error Message */}
+                <ErrorAlert
+                  error={error}
+                  onClose={() => setError(null)}
+                  className="mb-6"
+                />
 
                 <form onSubmit={handleSubmit} className="space-y-6">
                   <div>

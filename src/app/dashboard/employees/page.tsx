@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
+import ErrorAlert from '@/components/ui/ErrorAlert'
+import SuccessAlert from '@/components/ui/SuccessAlert'
 
 interface Employee {
   id: string
@@ -56,6 +58,8 @@ export default function Employees() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasHydrated, setHasHydrated] = useState(false)
+  const [alertError, setAlertError] = useState<string | null>(null)
+  const [alertSuccess, setAlertSuccess] = useState<string | null>(null)
 
   // Fetch departments from API
   const fetchDepartments = useCallback(async () => {
@@ -102,8 +106,9 @@ export default function Employees() {
 
       // Refresh departments
       await fetchDepartments();
+      setAlertSuccess('Department created successfully!');
     } catch (error: any) {
-      alert(error.message || 'Failed to create department');
+      setAlertError(error.message || 'Failed to create department');
     } finally {
       setDeptCreating(false);
     }
@@ -141,8 +146,9 @@ export default function Employees() {
 
       // Refresh employees
       await fetchEmployees();
+      setAlertSuccess('Employee created successfully!');
     } catch (error: any) {
-      alert(error.message || 'Failed to create employee');
+      setAlertError(error.message || 'Failed to create employee');
     } finally {
       setEmpCreating(false);
     }
@@ -154,8 +160,9 @@ export default function Employees() {
     if (file && file.type === 'text/csv') {
       setCsvFile(file);
       setImportResult(null);
+      setAlertError(null); // Clear any previous errors
     } else {
-      alert('Please select a valid CSV file');
+      setAlertError('Please select a valid CSV file');
     }
   };
 
@@ -191,10 +198,11 @@ export default function Employees() {
       // If successful, refresh employees
       if (result.imported > 0) {
         await fetchEmployees();
+        setAlertSuccess(`Successfully imported ${result.imported} employees!`);
       }
 
     } catch (error: any) {
-      alert(error.message || 'Failed to import CSV');
+      setAlertError(error.message || 'Failed to import CSV');
     } finally {
       setCsvImporting(false);
     }
@@ -216,7 +224,7 @@ export default function Employees() {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      alert('Failed to download template');
+      setAlertError('Failed to download template');
     }
   };
 
@@ -346,6 +354,20 @@ export default function Employees() {
 
   return (
     <div className="bg-gray-50 min-h-screen">
+      {/* Error and Success Messages */}
+      <div className="px-6 pt-4">
+        <ErrorAlert
+          error={alertError}
+          onClose={() => setAlertError(null)}
+          className="mb-4"
+        />
+        <SuccessAlert
+          message={alertSuccess}
+          onClose={() => setAlertSuccess(null)}
+          className="mb-4"
+        />
+      </div>
+
       {/* Header */}
       <header className="bg-white border-b border-gray-100">
         <div className="px-6 py-4">

@@ -16,9 +16,10 @@ export async function GET(request: NextRequest) {
     let query = supabaseAdmin
       .from('employees')
       .select(`
-        id, first_name, last_name, email, phone, department, position, 
+        id, first_name, last_name, email, phone, department, position,
         is_active, created_at, updated_at,
-        mood_checkins(mood_score, created_at)
+        mood_checkins(mood_score, response_text, is_anonymous, created_at),
+        organization:organizations(anonymous_allowed)
       `)
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: false })

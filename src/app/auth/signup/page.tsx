@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import ErrorAlert from '@/components/ui/ErrorAlert'
+import SuccessAlert from '@/components/ui/SuccessAlert'
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -19,6 +21,21 @@ export default function Signup() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [acceptTerms, setAcceptTerms] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
+
+  // Password validation
+  const getPasswordStrength = (password: string) => {
+    if (password.length === 0) return { strength: 0, label: '', color: '' }
+    if (password.length < 6) return { strength: 1, label: 'Too short', color: 'text-red-500' }
+    if (password.length < 8) return { strength: 2, label: 'Weak', color: 'text-orange-500' }
+    if (password.length >= 8 && /[A-Z]/.test(password) && /[0-9]/.test(password)) {
+      return { strength: 4, label: 'Strong', color: 'text-green-500' }
+    }
+    return { strength: 3, label: 'Good', color: 'text-blue-500' }
+  }
+
+  const passwordStrength = getPasswordStrength(formData.password)
 
   const router = useRouter()
   const { signUp, refreshProfile } = useAuth()
@@ -45,12 +62,21 @@ export default function Signup() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Clear previous messages
+    setError(null)
+    setSuccess(null)
+
     if (!acceptTerms) {
-      alert('Please accept the terms and conditions')
+      setError('Please accept the terms and conditions')
       return
     }
     if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match')
+      setError('Passwords do not match')
+      return
+    }
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters long')
       return
     }
 
@@ -71,7 +97,7 @@ export default function Signup() {
       const { user, error } = signUpResult
       if (error || !user) {
         console.error('📝 [Signup] User creation failed:', error)
-        alert(error?.message || 'Failed to create user account')
+        setError(error?.message || 'Failed to create user account')
         setIsLoading(false)
         return
       }
@@ -95,12 +121,13 @@ export default function Signup() {
 
       if (!result.success) {
         console.error('📝 [Signup] Organization creation failed:', result.error)
-        alert(result.error || 'Failed to complete signup')
+        setError(result.error || 'Failed to complete signup')
         setIsLoading(false)
         return
       }
 
       console.log('📝 [Signup] Signup complete, refreshing profile...')
+      setSuccess('Account created successfully! Redirecting to dashboard...')
 
       // Step 3: Refresh profile to get the new organization data
       try {
@@ -110,13 +137,15 @@ export default function Signup() {
         console.warn('📝 [Signup] Profile refresh failed, but continuing:', profileError)
       }
 
-      // Step 4: Navigate to dashboard
-      router.push('/dashboard')
+      // Step 4: Navigate to dashboard after a short delay to show success message
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 1500)
 
       // Don't reset loading here - let the redirect happen
     } catch (err: any) {
       console.error('📝 [Signup] Unexpected error:', err)
-      alert(err.message || 'Signup failed')
+      setError(err.message || 'Signup failed')
       setIsLoading(false)
     }
   }
@@ -165,6 +194,18 @@ export default function Signup() {
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Account</h1>
               <p className="text-gray-600">Start your free trial today</p>
             </div>
+
+            {/* Error and Success Messages */}
+            <ErrorAlert
+              error={error}
+              onClose={() => setError(null)}
+              className="mb-6"
+            />
+            <SuccessAlert
+              message={success}
+              onClose={() => setSuccess(null)}
+              className="mb-6"
+            />
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="grid grid-cols-2 gap-4">
@@ -286,6 +327,26 @@ export default function Signup() {
                     )}
                   </button>
                 </div>
+                {/* Password Strength Indicator */}
+                {formData.password && (
+                  <div className="mt-2">
+                    <div className="flex items-center space-x-2">
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
+                        <div
+                          className={`h-2 rounded-full transition-all duration-300 ${
+                            passwordStrength.strength === 1 ? 'bg-red-500 w-1/4' :
+                            passwordStrength.strength === 2 ? 'bg-orange-500 w-2/4' :
+                            passwordStrength.strength === 3 ? 'bg-blue-500 w-3/4' :
+                            passwordStrength.strength === 4 ? 'bg-green-500 w-full' : 'w-0'
+                          }`}
+                        />
+                      </div>
+                      <span className={`text-xs font-medium ${passwordStrength.color}`}>
+                        {passwordStrength.label}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
@@ -320,6 +381,26 @@ export default function Signup() {
                     )}
                   </button>
                 </div>
+                {/* Password Match Indicator */}
+                {formData.confirmPassword && (
+                  <div className="mt-2">
+                    {formData.password === formData.confirmPassword ? (
+                      <div className="flex items-center text-green-600 text-xs">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        Passwords match
+                      </div>
+                    ) : (
+                      <div className="flex items-center text-red-600 text-xs">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Passwords don't match
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center">

@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
           .from('profiles')
           .select('last_login')
           .eq('organization_id', org.id)
-          .order('last_login', { ascending: false, nullsLast: true })
+          .order('last_login', { ascending: false, nullsFirst: false })
           .limit(1)
           .single()
 

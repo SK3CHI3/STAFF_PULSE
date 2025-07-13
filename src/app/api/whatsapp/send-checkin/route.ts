@@ -70,7 +70,7 @@ async function sendMoodCheckin(employeeId: string, messageType: 'daily' | 'weekl
                     MESSAGE_TEMPLATES.en[messageType]
 
     // Personalize message
-    const companyName = employee.organization?.name || 'Your Company'
+    const companyName = (employee.organization as any)?.name || 'Your Company'
     const message = template
       .replace('{name}', employee.first_name)
       .replace('{company}', companyName)
@@ -153,7 +153,7 @@ async function sendBulkCheckins(organizationId: string, employeeIds?: string[], 
     console.log('📱 [Bulk Check-in] Employee details:', employees.map(e => ({ id: e.id, name: e.first_name, phone: e.phone })))
 
     // Get organization name for template
-    const companyName = employees[0]?.organization?.name || 'Your Company'
+    const companyName = (employees[0]?.organization as any)?.name || 'Your Company'
 
     // Get message template
     const template = MESSAGE_TEMPLATES.en[messageType]

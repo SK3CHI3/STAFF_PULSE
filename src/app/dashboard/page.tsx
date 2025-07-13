@@ -192,7 +192,11 @@ function Dashboard() {
     try {
       const { data, error } = await supabase
         .from('mood_checkins')
-        .select('*, employees(first_name, last_name)')
+        .select(`
+          *,
+          employees(first_name, last_name, department),
+          organization:organizations(anonymous_allowed)
+        `)
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -381,7 +385,10 @@ function Dashboard() {
 
     } catch (error: any) {
       console.error('Export error:', error);
-      alert(error.message || 'Failed to export report');
+      setToast({
+        message: error.message || 'Failed to export report',
+        type: 'error'
+      });
     } finally {
       setExporting(false);
     }
@@ -859,24 +866,74 @@ function Dashboard() {
               ) : recentResponses.length === 0 ? (
                 <div className="text-center text-gray-500 py-8">No recent responses yet.</div>
               ) : (
-                recentResponses.map((response, index) => (
-                  <div key={index} className="flex items-center space-x-4 p-4 rounded-xl hover:bg-gray-50 transition-all duration-200 hover:scale-105">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 rounded-xl flex items-center justify-center">
-                      <span className="text-green-600 font-bold text-sm">{response.response_count || 0}</span>
-                </div>
-                <div className="flex-1">
-                      <p className="text-sm font-semibold text-gray-900">{response.employee_name || 'N/A'}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {response.sent_at ? new Date(response.sent_at).toLocaleDateString() : 'N/A'} • {response.department || 'N/A'}
-                      </p>
-                </div>
-                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              </div>
-                ))
+                recentResponses.map((response, index) => {
+                  // Check if organization allows anonymous responses and if this response is anonymous
+                  const orgAllowsAnonymous = response.organization?.anonymous_allowed ?? true;
+                  const isAnonymousResponse = response.is_anonymous && orgAllowsAnonymous;
+
+                  const employeeName = isAnonymousResponse
+                    ? 'Anonymous Employee'
+                    : `${response.employees?.first_name || ''} ${response.employees?.last_name || ''}`.trim() || 'Unknown Employee';
+
+                  const getMoodColor = (score: number) => {
+                    if (score >= 4) return 'from-green-100 to-green-200 text-green-600';
+                    if (score >= 3) return 'from-yellow-100 to-yellow-200 text-yellow-600';
+                    return 'from-red-100 to-red-200 text-red-600';
+                  };
+
+                  const getMoodEmoji = (score: number) => {
+                    if (score >= 4) return '😊';
+                    if (score >= 3) return '😐';
+                    return '😔';
+                  };
+
+                  const getMoodLabel = (score: number) => {
+                    if (score === 5) return 'Excellent';
+                    if (score === 4) return 'Good';
+                    if (score === 3) return 'Okay';
+                    if (score === 2) return 'Challenging';
+                    if (score === 1) return 'Difficult';
+                    return 'Unknown';
+                  };
+
+                  return (
+                    <div key={response.id || index} className="flex items-center space-x-4 p-4 rounded-xl hover:bg-gray-50 transition-all duration-200 hover:scale-105">
+                      <div className={`w-12 h-12 bg-gradient-to-br ${getMoodColor(response.mood_score || 0)} rounded-xl flex items-center justify-center`}>
+                        <span className="font-bold text-lg">{getMoodEmoji(response.mood_score || 0)}</span>
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-gray-900">{employeeName}</p>
+                          {isAnonymousResponse && (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                              <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                              </svg>
+                              Anonymous
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {response.created_at ? new Date(response.created_at).toLocaleDateString() : 'N/A'} • {isAnonymousResponse ? 'Anonymous Response' : (response.employees?.department || 'No Department')}
+                        </p>
+                        {response.response_text && (
+                          <p className="text-xs text-gray-600 mt-1 italic">"{response.response_text.substring(0, 50)}{response.response_text.length > 50 ? '...' : ''}"</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-center">
+                        <span className="text-lg font-bold text-gray-700">{response.mood_score || 0}</span>
+                        <span className="text-xs text-gray-500">{getMoodLabel(response.mood_score || 0)}</span>
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
 
-            <button className="w-full mt-8 text-blue-600 text-sm font-semibold hover:text-blue-700 transition-all duration-200 py-3 rounded-xl hover:bg-blue-50 border border-blue-200 hover:border-blue-300 hover:scale-105">
+            <button
+              onClick={() => router.push('/dashboard/responses')}
+              className="w-full mt-8 text-blue-600 text-sm font-semibold hover:text-blue-700 transition-all duration-200 py-3 rounded-xl hover:bg-blue-50 border border-blue-200 hover:border-blue-300 hover:scale-105"
+            >
               View All Responses
             </button>
           </div>

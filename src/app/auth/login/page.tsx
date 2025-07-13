@@ -5,12 +5,16 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { getDashboardRoute } from '@/lib/role-permissions'
+import ErrorAlert from '@/components/ui/ErrorAlert'
+import SuccessAlert from '@/components/ui/SuccessAlert'
 
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
 
   const router = useRouter()
   const { signIn, user, profile } = useAuth()
@@ -43,6 +47,10 @@ export default function Login() {
     console.log('📝 [Login] Form submitted with email:', email)
     console.log('📝 [Login] Password provided:', password ? 'YES' : 'NO')
     console.log('📝 [Login] Setting loading to true...')
+
+    // Clear previous messages
+    setError(null)
+    setSuccess(null)
     setIsLoading(true)
     console.log('📝 [Login] Loading state set to true')
 
@@ -63,12 +71,12 @@ export default function Login() {
         if (signInResult.error) {
           console.error('📝 [Login] Sign-in error:', signInResult.error)
           const errorMessage = signInResult.error.message || 'Login failed. Please check your credentials.'
-          alert(errorMessage)
+          setError(errorMessage)
           setIsLoading(false) // Reset loading immediately on error
         }
       }).catch(err => {
         console.error('📝 [Login] SignIn promise rejected:', err)
-        alert(err.message || 'Login failed')
+        setError(err.message || 'Login failed')
         setIsLoading(false)
       })
 
@@ -77,7 +85,7 @@ export default function Login() {
     } catch (err: any) {
       console.error('📝 [Login] Unexpected error:', err)
       console.error('📝 [Login] Error stack:', err.stack)
-      alert(err.message || 'Login failed')
+      setError(err.message || 'Login failed')
       setIsLoading(false) // Reset loading on error
     }
   }
@@ -126,6 +134,18 @@ export default function Login() {
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
               <p className="text-gray-600">Sign in to your StaffPulse dashboard</p>
             </div>
+
+            {/* Error and Success Messages */}
+            <ErrorAlert
+              error={error}
+              onClose={() => setError(null)}
+              className="mb-6"
+            />
+            <SuccessAlert
+              message={success}
+              onClose={() => setSuccess(null)}
+              className="mb-6"
+            />
 
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>

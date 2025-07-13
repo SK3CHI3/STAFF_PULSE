@@ -239,18 +239,18 @@ export default function Analytics() {
               {['Excellent (5)', 'Good (4)', 'Neutral (3)', 'Poor (2)', 'Very Poor (1)'].map((mood, i) => {
                 const colors = ['bg-green-500', 'bg-blue-500', 'bg-yellow-500', 'bg-orange-500', 'bg-red-500']
                 const total = moodDist.reduce((a, b) => a + b, 0)
-                const count = moodDist[4 - i] // Reverse order for display
+                const count = moodDist[4 - i] // Reverse order for display (moodDist[0] = score 1, moodDist[4] = score 5)
                 const percentage = total > 0 ? (count / total) * 100 : 0
                 return (
                   <div key={i} className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                      <div className={`w-4 h-4 rounded ${colors[4 - i]}`}></div>
+                      <div className={`w-4 h-4 rounded ${colors[i]}`}></div>
                       <span className="text-sm font-medium text-gray-700">{mood}</span>
                   </div>
                   <div className="flex items-center space-x-3">
                     <div className="w-24 bg-gray-200 rounded-full h-2">
-                      <div 
-                          className={`h-2 rounded-full ${colors[4 - i]}`}
+                      <div
+                          className={`h-2 rounded-full ${colors[i]}`}
                           style={{ width: `${percentage}%` }}
                       ></div>
                       </div>

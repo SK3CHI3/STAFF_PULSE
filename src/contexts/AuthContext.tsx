@@ -93,7 +93,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single()
 
       if (profileError) {
-        console.error('🔐 [AuthProvider] Profile fetch error:', profileError)
+        console.error('🔐 [AuthProvider] Profile fetch error:', {
+          message: profileError.message,
+          details: profileError.details,
+          hint: profileError.hint,
+          code: profileError.code
+        })
+
+        // If profile doesn't exist (PGRST116), try to create it
+        if (profileError.code === 'PGRST116') {
+          console.log('🔐 [AuthProvider] Profile not found, attempting to create...')
+          try {
+            // Get user email from auth
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user?.email) {
+              const { data: newProfile, error: createError } = await supabase
+                .from('profiles')
+                .insert({
+                  id: userId,
+                  email: user.email,
+                  first_name: user.user_metadata?.first_name || 'User',
+                  last_name: user.user_metadata?.last_name || 'Name',
+                  role: 'hr_admin'
+                })
+                .select()
+                .single()
+
+              if (createError) {
+                console.error('🔐 [AuthProvider] Failed to create profile:', createError)
+                return null
+              }
+
+              console.log('🔐 [AuthProvider] Profile created successfully')
+              // Continue with the newly created profile
+              return await fetchProfile(userId) // Recursive call to fetch the new profile
+            }
+          } catch (createException) {
+            console.error('🔐 [AuthProvider] Exception creating profile:', createException)
+          }
+        }
+
         return null
       }
 
@@ -132,7 +171,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🔐 [AuthProvider] Profile fetch completed successfully')
       return userProfile
     } catch (error) {
-      console.error('🔐 [AuthProvider] Profile fetch exception:', error)
+      console.error('🔐 [AuthProvider] Profile fetch exception:', {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      })
       return null
     }
   }, [])

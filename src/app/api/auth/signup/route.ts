@@ -4,9 +4,24 @@ import { createSupabaseAdmin } from '@/lib/supabase';
 export async function POST(req: NextRequest) {
   try {
     const data = await req.json();
-    const { firstName, lastName, email, password, companyName, teamSize } = data;
-    if (!firstName || !lastName || !email || !password || !companyName || !teamSize) {
-      return NextResponse.json({ error: 'All fields are required.' }, { status: 400 });
+    console.log('📝 [Signup API] Received data:', { ...data, password: '[HIDDEN]' });
+
+    const { firstName, lastName, email, password, companyName, teamSize, userId } = data;
+
+    // Check required fields
+    const missingFields = [];
+    if (!firstName) missingFields.push('firstName');
+    if (!lastName) missingFields.push('lastName');
+    if (!email) missingFields.push('email');
+    if (!companyName) missingFields.push('companyName');
+    if (!teamSize) missingFields.push('teamSize');
+    if (!userId) missingFields.push('userId');
+
+    if (missingFields.length > 0) {
+      console.error('📝 [Signup API] Missing fields:', missingFields);
+      return NextResponse.json({
+        error: `Missing required fields: ${missingFields.join(', ')}`
+      }, { status: 400 });
     }
 
     // 1. Create user in Supabase Auth (public API)
@@ -36,6 +51,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Create organization
+    console.log('📝 [Signup API] Creating organization:', companyName);
     const { data: orgData, error: orgError } = await supabaseAdmin
       .from('organizations')
       .insert({
@@ -47,15 +63,20 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
 
-    if (orgError || !orgData) {
-      return NextResponse.json({ error: 'Failed to create organization.' }, { status: 500 });
+    if (orgError) {
+      console.error('📝 [Signup API] Organization creation error:', orgError);
+      return NextResponse.json({ error: 'Failed to create organization: ' + orgError.message }, { status: 500 });
     }
 
-    // 3. Upsert profile (must be called with userId from client)
-    const { userId } = data;
-    if (!userId) {
-      return NextResponse.json({ error: 'User ID is required.' }, { status: 400 });
+    if (!orgData) {
+      console.error('📝 [Signup API] No organization data returned');
+      return NextResponse.json({ error: 'Failed to create organization: No data returned' }, { status: 500 });
     }
+
+    console.log('📝 [Signup API] Organization created:', orgData.id);
+
+    // 3. Create profile
+    console.log('📝 [Signup API] Creating profile for user:', userId);
     const profileUpsertData = {
       id: userId,
       organization_id: orgData.id,
@@ -64,15 +85,24 @@ export async function POST(req: NextRequest) {
       email,
       role: 'hr_admin'
     };
+
+    console.log('📝 [Signup API] Profile data:', profileUpsertData);
+
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert([profileUpsertData], { onConflict: 'id' });
+
     if (profileError) {
-      return NextResponse.json({ error: 'Failed to create user profile.' }, { status: 500 });
+      console.error('📝 [Signup API] Profile creation error:', profileError);
+      return NextResponse.json({ error: 'Failed to create user profile: ' + profileError.message }, { status: 500 });
     }
 
+    console.log('📝 [Signup API] Profile created successfully');
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: 'Internal server error.' }, { status: 500 });
+    console.error('📝 [Signup API] Unexpected error:', error);
+    return NextResponse.json({
+      error: 'Internal server error: ' + (error instanceof Error ? error.message : 'Unknown error')
+    }, { status: 500 });
   }
 } 

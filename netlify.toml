@@ -8,11 +8,8 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Handle client-side routing for SPA
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+[functions]
+  external_node_modules = ["sharp"]
 
 # Environment variables that need to be set in Netlify UI
 # NEXT_PUBLIC_SUPABASE_URL

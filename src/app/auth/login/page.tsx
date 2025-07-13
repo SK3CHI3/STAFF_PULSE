@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { getDashboardRoute } from '@/lib/role-permissions'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -12,16 +13,17 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
 
   const router = useRouter()
-  const { signIn, user } = useAuth()
+  const { signIn, user, profile } = useAuth()
 
   // Listen for successful authentication
   useEffect(() => {
-    if (user && isLoading) {
-      console.log('📝 [Login] User authenticated, redirecting to dashboard...')
+    if (user && profile && isLoading) {
+      const dashboardRoute = getDashboardRoute(profile.role)
+      console.log('📝 [Login] User authenticated, redirecting to:', dashboardRoute, 'for role:', profile.role)
       setIsLoading(false)
-      router.push('/dashboard')
+      router.push(dashboardRoute)
     }
-  }, [user, isLoading, router])
+  }, [user, profile, isLoading, router])
 
   // Safety timeout to prevent stuck loading states - but only for very long delays
   useEffect(() => {

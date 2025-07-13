@@ -20,14 +20,15 @@ export default function SuperAdminLayout({
         router.push('/auth/login')
         return
       }
-      if (profile?.role !== 'super_admin') {
+      if (profile && profile.role !== 'super_admin') {
         router.push('/dashboard')
         return
       }
     }
   }, [user, profile, loading, router])
 
-  if (loading) {
+  // Show loading while authentication is in progress
+  if (loading || !user || !profile) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">
@@ -38,7 +39,8 @@ export default function SuperAdminLayout({
     )
   }
 
-  if (!user || profile?.role !== 'super_admin') {
+  // Only show access denied if we're sure the user is not a super admin
+  if (profile.role !== 'super_admin') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
         <div className="text-center">

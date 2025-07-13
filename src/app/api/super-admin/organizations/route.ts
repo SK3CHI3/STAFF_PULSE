@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
         *,
         employees(count),
         mood_checkins(count),
-        profiles(count, last_sign_in_at)
+        profiles(count)
       `)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
@@ -39,13 +39,26 @@ export async function GET(request: NextRequest) {
     }
 
     // Process organizations with additional stats
-    const processedOrgs = organizations?.map(org => ({
-      ...org,
-      employees_count: org.employees?.[0]?.count || 0,
-      responses_count: org.mood_checkins?.[0]?.count || 0,
-      users_count: org.profiles?.[0]?.count || 0,
-      last_activity: org.profiles?.[0]?.last_sign_in_at || org.updated_at
-    })) || []
+    const processedOrgs = await Promise.all(
+      (organizations || []).map(async (org) => {
+        // Get the most recent login for this organization
+        const { data: lastLoginData } = await supabaseAdmin
+          .from('profiles')
+          .select('last_login')
+          .eq('organization_id', org.id)
+          .order('last_login', { ascending: false, nullsLast: true })
+          .limit(1)
+          .single()
+
+        return {
+          ...org,
+          employees_count: org.employees?.[0]?.count || 0,
+          responses_count: org.mood_checkins?.[0]?.count || 0,
+          users_count: org.profiles?.[0]?.count || 0,
+          last_activity: lastLoginData?.last_login || org.updated_at
+        }
+      })
+    )
 
     return NextResponse.json({ 
       success: true, 

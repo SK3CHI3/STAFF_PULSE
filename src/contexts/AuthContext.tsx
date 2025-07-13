@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       console.log('🔐 [AuthProvider] Fetching profile for user:', userId)
 
-      // First, fetch the profile data only
+      // Fetch the profile data with a simpler approach
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -100,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🔐 [AuthProvider] Profile data fetched:', {
         userId: profileData.id,
         email: profileData.email,
+        role: profileData.role,
         hasOrganization: !!profileData.organization_id
       })
 

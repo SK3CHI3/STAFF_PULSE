@@ -24,14 +24,14 @@ function getTwilioClient() {
 // Default check-in message templates
 const MESSAGE_TEMPLATES = {
   en: {
-    weekly: "Hi {name}! 👋 How was your week? Reply with:\n1 = Terrible 😞\n2 = Poor 😕\n3 = Okay 😐\n4 = Good 😊\n5 = Great! 🎉\n\nFeel free to add any comments too!",
-    daily: "Hi {name}! 👋 How are you feeling today? Reply 1-5 (1=bad, 5=great) and add any thoughts!",
-    biweekly: "Hi {name}! 👋 How have the past 2 weeks been? Rate 1-5 and share what's on your mind!"
+    weekly: "Hi {name},\n\nHope you're doing well! {company} values your wellbeing and we'd appreciate a quick check-in. 💙\n\nHow are things going for you at work?\n• Excellent (5) 😊\n• Good (4) 👍\n• Okay (3) 😐\n• Challenging (2) 😔\n• Difficult (1) 😞\n\nIf you'd like to share more details or have any concerns, please feel free to add a comment. 💬\n\nThank you for helping us support our team better! 🙏",
+    daily: "Hi {name},\n\nHope you're doing well! {company} values your wellbeing and we'd appreciate a quick check-in. 💙\n\nHow are things going for you at work today?\n• Excellent (5) 😊\n• Good (4) 👍\n• Okay (3) 😐\n• Challenging (2) 😔\n• Difficult (1) 😞\n\nIf you'd like to share more details or have any concerns, please feel free to add a comment. 💬\n\nThank you for helping us support our team better! 🙏",
+    biweekly: "Hi {name},\n\nHope you're doing well! {company} values your wellbeing and we'd appreciate a quick check-in. 💙\n\nHow have things been going for you at work over the past 2 weeks?\n• Excellent (5) 😊\n• Good (4) 👍\n• Okay (3) 😐\n• Challenging (2) 😔\n• Difficult (1) 😞\n\nIf you'd like to share more details or have any concerns, please feel free to add a comment. 💬\n\nThank you for helping us support our team better! 🙏"
   },
   sw: {
-    weekly: "Hujambo {name}! 👋 Wiki hii ilikuwaje? Jibu kwa:\n1 = Mbaya sana 😞\n2 = Mbaya 😕\n3 = Sawa 😐\n4 = Nzuri 😊\n5 = Nzuri sana! 🎉\n\nUnaweza kuongeza maoni yako pia!",
-    daily: "Hujambo {name}! 👋 Unahisije leo? Jibu 1-5 (1=mbaya, 5=nzuri) na ongeza mawazo yako!",
-    biweekly: "Hujambo {name}! 👋 Wiki 2 zilizopita zilikuwaje? Kadiria 1-5 na shiriki mawazo yako!"
+    weekly: "Hujambo {name},\n\nTunatumai upo vizuri! {company} inathamini ustawi wako na tungependa ukaguse kidogo. 💙\n\nMambo yanakuwaje kazini?\n• Bora sana (5) 😊\n• Vizuri (4) 👍\n• Sawa (3) 😐\n• Changamoto (2) 😔\n• Ngumu (1) 😞\n\nUkitaka kushiriki maelezo zaidi au una wasiwasi wowote, huru kuongeza maoni. 💬\n\nAsante kwa kutusaidia kuunga mkono timu yetu vizuri zaidi! 🙏",
+    daily: "Hujambo {name},\n\nTunatumai upo vizuri! {company} inathamini ustawi wako na tungependa ukaguse kidogo. 💙\n\nMambo yanakuwaje kazini leo?\n• Bora sana (5) 😊\n• Vizuri (4) 👍\n• Sawa (3) 😐\n• Changamoto (2) 😔\n• Ngumu (1) 😞\n\nUkitaka kushiriki maelezo zaidi au una wasiwasi wowote, huru kuongeza maoni. 💬\n\nAsante kwa kutusaidia kuunga mkono timu yetu vizuri zaidi! 🙏",
+    biweekly: "Hujambo {name},\n\nTunatumai upo vizuri! {company} inathamini ustawi wako na tungependa ukaguse kidogo. 💙\n\nMambo yamekuwaje kazini katika wiki 2 zilizopita?\n• Bora sana (5) 😊\n• Vizuri (4) 👍\n• Sawa (3) 😐\n• Changamoto (2) 😔\n• Ngumu (1) 😞\n\nUkitaka kushiriki maelezo zaidi au una wasiwasi wowote, huru kuongeza maoni. 💬\n\nAsante kwa kutusaidia kuunga mkono timu yetu vizuri zaidi! 🙏"
   }
 }
 
@@ -70,7 +70,10 @@ async function sendMoodCheckin(employeeId: string, messageType: 'daily' | 'weekl
                     MESSAGE_TEMPLATES.en[messageType]
 
     // Personalize message
-    const message = template.replace('{name}', employee.first_name)
+    const companyName = employee.organization?.name || 'Your Company'
+    const message = template
+      .replace('{name}', employee.first_name)
+      .replace('{company}', companyName)
     console.log('📱 [Send Check-in] Message prepared:', message)
 
     // Send WhatsApp message
@@ -126,7 +129,10 @@ async function sendBulkCheckins(organizationId: string, employeeIds?: string[], 
     // Get employees to send to
     let query = supabaseAdmin
       .from('employees')
-      .select('id, first_name, phone')
+      .select(`
+        id, first_name, phone, language_preference,
+        organization:organizations(name)
+      `)
       .eq('organization_id', organizationId)
       .eq('is_active', true)
 
@@ -146,10 +152,62 @@ async function sendBulkCheckins(organizationId: string, employeeIds?: string[], 
     console.log('📱 [Bulk Check-in] Found employees:', employees.length)
     console.log('📱 [Bulk Check-in] Employee details:', employees.map(e => ({ id: e.id, name: e.first_name, phone: e.phone })))
 
+    // Get organization name for template
+    const companyName = employees[0]?.organization?.name || 'Your Company'
+
+    // Get message template
+    const template = MESSAGE_TEMPLATES.en[messageType]
+
     // Send check-ins to all employees
     console.log('📱 [Bulk Check-in] Sending messages to all employees...')
+    const twilioClient = getTwilioClient()
+
     const results = await Promise.allSettled(
-      employees.map(employee => sendMoodCheckin(employee.id, messageType))
+      employees.map(async (employee) => {
+        try {
+          // Personalize message
+          const language = employee.language_preference || 'en'
+          const localTemplate = MESSAGE_TEMPLATES[language as keyof typeof MESSAGE_TEMPLATES]?.[messageType] ||
+                              MESSAGE_TEMPLATES.en[messageType]
+
+          const message = localTemplate
+            .replace('{name}', employee.first_name)
+            .replace('{company}', companyName)
+
+          // Send WhatsApp message
+          const response = await twilioClient.messages.create({
+            from: process.env.TWILIO_WHATSAPP_NUMBER,
+            to: `whatsapp:${employee.phone}`,
+            body: message
+          })
+
+          // Log the outbound message
+          await supabaseAdmin
+            .from('whatsapp_logs')
+            .insert({
+              organization_id: organizationId,
+              employee_id: employee.id,
+              message_type: 'checkin_request',
+              direction: 'outbound',
+              message_content: message,
+              twilio_message_id: response.sid,
+              status: 'sent'
+            })
+
+          return {
+            success: true,
+            messageId: response.sid,
+            employee: {
+              id: employee.id,
+              name: employee.first_name,
+              phone: employee.phone
+            }
+          }
+        } catch (error) {
+          console.error(`Error sending to ${employee.first_name}:`, error)
+          return { success: false, error: 'Failed to send message', employee: employee.id }
+        }
+      })
     )
 
     // Count successes and failures

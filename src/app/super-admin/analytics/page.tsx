@@ -524,7 +524,7 @@ export default function SuperAdminAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="name" stroke="#6B7280" tick={props => <CustomXAxisTick {...props} />} />
                 <YAxis stroke="#6B7280" />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} labelStyle={{ color: '#111827' }} />
                 <Area type="monotone" dataKey="organizations" stroke="#3B82F6" fillOpacity={1} fill="url(#colorOrgs)" />
                 <Area type="monotone" dataKey="employees" stroke="#10B981" fillOpacity={1} fill="url(#colorEmployees)" />
               </AreaChart>
@@ -538,7 +538,7 @@ export default function SuperAdminAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="name" stroke="#6B7280" tick={props => <CustomXAxisTick {...props} />} />
                 <YAxis stroke="#6B7280" />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} labelStyle={{ color: '#111827' }} />
                 <Line type="monotone" dataKey="revenue" stroke="#8B5CF6" strokeWidth={3} dot={{ fill: '#8B5CF6' }} />
                 <Line type="monotone" dataKey="mrr" stroke="#F59E0B" strokeWidth={3} dot={{ fill: '#F59E0B' }} />
               </LineChart>
@@ -555,7 +555,7 @@ export default function SuperAdminAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="date" stroke="#6B7280" tick={props => <CustomXAxisTick {...props} />} />
                 <YAxis stroke="#6B7280" domain={[0, 'auto']} />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} labelStyle={{ color: '#111827' }} />
                 <Line type="monotone" dataKey="responseRate" stroke="#10B981" strokeWidth={2} />
                 <Line type="monotone" dataKey="avgMood" stroke="#8B5CF6" strokeWidth={2} />
               </LineChart>
@@ -569,7 +569,7 @@ export default function SuperAdminAnalytics() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                 <XAxis dataKey="label" stroke="#6B7280" />
                 <YAxis stroke="#6B7280" domain={[0, 'auto']} />
-                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: 'none', borderRadius: '12px' }} labelStyle={{ color: '#111827' }} />
                 <Area type="monotone" dataKey="messages" stackId="1" stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.6} />
                 <Area type="monotone" dataKey="responses" stackId="1" stroke="#10B981" fill="#10B981" fillOpacity={0.6} />
               </AreaChart>

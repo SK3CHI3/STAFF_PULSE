@@ -630,14 +630,14 @@ function Dashboard() {
       </header>
 
       {/* Dashboard Content */}
-      <main className="p-4">
+      <main className="p-6 lg:p-8 space-y-8">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+          <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Total Employees</p>
-                <div className="text-3xl font-bold text-gray-900 mt-2">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Total Employees</p>
+                <div className="text-4xl font-bold text-gray-900 mb-2">
                   {employeeStatsLoading ? (
                     <div className="flex items-center">
                       <SkeletonLoader className="h-8 w-16" />
@@ -648,24 +648,24 @@ function Dashboard() {
                     employeeStats.total
                   )}
                 </div>
-                <p className={`text-xs mt-1 ${employeeStats.totalLastMonth > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                <p className={`text-sm font-medium ${employeeStats.totalLastMonth > 0 ? 'text-green-600' : 'text-gray-500'}`}>
                   {employeeStatsLoading ? '...' :
                    employeeStats.totalLastMonth > 0 ? `+${employeeStats.totalLastMonth} this month` : 'No new employees this month'}
                 </p>
               </div>
-              <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
-                <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                 </svg>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+          <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Response Rate</p>
-                <div className="text-3xl font-bold text-green-600 mt-2">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Response Rate</p>
+                <div className="text-4xl font-bold text-green-600 mb-2">
                   {employeeStatsLoading ? (
                     <div className="flex items-center">
                       <SkeletonLoader className="h-8 w-20" />
@@ -676,7 +676,7 @@ function Dashboard() {
                     `${employeeStats.responseRate}%`
                   )}
                 </div>
-                <p className={`text-xs mt-1 ${
+                <p className={`text-sm font-medium ${
                   employeeStatsLoading ? 'text-gray-500' :
                   employeeStats.responseRate > employeeStats.responseRateLastWeek ? 'text-green-600' :
                   employeeStats.responseRate < employeeStats.responseRateLastWeek ? 'text-red-600' : 'text-gray-500'
@@ -686,19 +686,19 @@ function Dashboard() {
                    `${employeeStats.responseRate > employeeStats.responseRateLastWeek ? '+' : ''}${(employeeStats.responseRate - employeeStats.responseRateLastWeek).toFixed(1)}% from last week`}
                 </p>
               </div>
-              <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center">
-                <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-100 to-green-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+          <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Average Mood</p>
-                <div className="text-3xl font-bold text-blue-600 mt-2">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Average Mood</p>
+                <div className="text-4xl font-bold text-blue-600 mb-2">
                   {employeeStatsLoading ? (
                     <div className="flex items-center">
                       <SkeletonLoader className="h-8 w-12" />
@@ -709,7 +709,7 @@ function Dashboard() {
                     employeeStats.avgMood.toFixed(1)
                   )}
                 </div>
-                <p className={`text-xs mt-1 ${
+                <p className={`text-sm font-medium ${
                   employeeStatsLoading ? 'text-gray-500' :
                   employeeStats.avgMood >= 4.5 ? 'text-green-600' :
                   employeeStats.avgMood >= 3.5 ? 'text-blue-600' :
@@ -718,19 +718,19 @@ function Dashboard() {
                   {employeeStatsLoading ? '...' : employeeStats.moodCategory}
                 </p>
               </div>
-              <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
-                <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15M9 10V9a2 2 0 012-2h2a2 2 0 012 2v1M9 10v5a2 2 0 002 2h2a2 2 0 002-2v-5" />
                 </svg>
               </div>
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+          <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">Active Alerts</p>
-                <div className="text-3xl font-bold text-orange-600 mt-2">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Active Alerts</p>
+                <div className="text-4xl font-bold text-orange-600 mb-2">
                   {alertsLoading ? (
                     <div className="flex items-center">
                       <SkeletonLoader className="h-8 w-8" />
@@ -741,7 +741,7 @@ function Dashboard() {
                     alerts.length
                   )}
                 </div>
-                <p className={`text-xs mt-1 ${
+                <p className={`text-sm font-medium ${
                   alertsLoading ? 'text-gray-500' :
                   alerts.length > 0 ? 'text-orange-600' : 'text-green-600'
                 }`}>
@@ -749,8 +749,8 @@ function Dashboard() {
                    alerts.length > 0 ? 'Needs attention' : 'All good'}
                 </p>
               </div>
-              <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center">
-                <svg className="w-7 h-7 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                <svg className="w-8 h-8 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.732-.833-2.464 0L4.35 16.5c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
               </div>
@@ -759,18 +759,18 @@ function Dashboard() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Mood Trends Chart (Redesigned) */}
-          <div className="lg:col-span-2 bg-white/80 backdrop-blur-xl border border-white/30 rounded-2xl shadow-xl p-8 relative overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
+          <div className="lg:col-span-2 bg-white rounded-3xl shadow-xl border border-gray-100 p-8 relative overflow-hidden hover:shadow-2xl transition-shadow duration-300">
+            <div className="flex items-center justify-between mb-8">
               <div>
-                <h2 className="text-lg font-bold text-gray-900">Mood Trends</h2>
-                <p className="text-gray-500 text-xs">Average daily mood score ({timeRange === '7d' ? 'Last 7 days' : timeRange === '30d' ? 'Last 30 days' : 'Last 3 months'})</p>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Mood Trends</h2>
+                <p className="text-gray-600 text-sm">Average daily mood score ({timeRange === '7d' ? 'Last 7 days' : timeRange === '30d' ? 'Last 30 days' : 'Last 3 months'})</p>
               </div>
               <select
                 value={timeRange}
                 onChange={(e) => setTimeRange(e.target.value)}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-gray-900"
+                className="border border-gray-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 shadow-sm hover:shadow-md transition-shadow"
               >
                 <option value="7d">Last 7 days</option>
                 <option value="30d">Last 30 days</option>
@@ -823,7 +823,7 @@ function Dashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                   <XAxis dataKey="day" tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
                   <YAxis domain={[1, 5]} tickCount={5} tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB' }} formatter={(value) => typeof value === 'number' ? value.toFixed(2) : value} />
+                  <Tooltip contentStyle={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB' }} labelStyle={{ color: '#111827' }} formatter={(value) => typeof value === 'number' ? value.toFixed(2) : value} />
                   <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ color: '#3BB273', fontWeight: 500, fontSize: 14 }} />
                   <Area type="monotone" dataKey="mood" name="Average Mood" stroke="#3BB273" fillOpacity={1} fill="url(#colorMood)" dot={{ r: 5, fill: '#3BB273', stroke: '#fff', strokeWidth: 2 }} />
                 </AreaChart>
@@ -833,8 +833,8 @@ function Dashboard() {
           </div>
 
           {/* Recent Responses */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900 mb-6">Recent Responses</h2>
+          <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 hover:shadow-2xl transition-shadow duration-300">
+            <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Responses</h2>
 
             <div className="space-y-4">
               {recentResponsesLoading ? (
@@ -860,23 +860,23 @@ function Dashboard() {
                 <div className="text-center text-gray-500 py-8">No recent responses yet.</div>
               ) : (
                 recentResponses.map((response, index) => (
-                  <div key={index} className="flex items-center space-x-4 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                  <div key={index} className="flex items-center space-x-4 p-4 rounded-xl hover:bg-gray-50 transition-all duration-200 hover:scale-105">
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-100 to-green-200 rounded-xl flex items-center justify-center">
                       <span className="text-green-600 font-bold text-sm">{response.response_count || 0}</span>
                 </div>
                 <div className="flex-1">
                       <p className="text-sm font-semibold text-gray-900">{response.employee_name || 'N/A'}</p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 mt-1">
                         {response.sent_at ? new Date(response.sent_at).toLocaleDateString() : 'N/A'} • {response.department || 'N/A'}
                       </p>
                 </div>
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
               </div>
                 ))
               )}
             </div>
 
-            <button className="w-full mt-6 text-blue-600 text-sm font-semibold hover:text-blue-700 transition-colors py-2 rounded-lg hover:bg-blue-50">
+            <button className="w-full mt-8 text-blue-600 text-sm font-semibold hover:text-blue-700 transition-all duration-200 py-3 rounded-xl hover:bg-blue-50 border border-blue-200 hover:border-blue-300 hover:scale-105">
               View All Responses
             </button>
           </div>

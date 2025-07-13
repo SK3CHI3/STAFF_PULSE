@@ -91,7 +91,7 @@ WhatsApp requires pre-approved templates for business messaging:
   "components": [
     {
       "type": "BODY",
-      "text": "Hi {{1}}! 👋 How was your week? Reply with:\n1 = Terrible 😞\n2 = Poor 😕\n3 = Okay 😐\n4 = Good 😊\n5 = Great! 🎉\n\nFeel free to add any comments too!"
+      "text": "Hi {{1}},\n\nHope you're doing well! {{2}} values your wellbeing and we'd appreciate a quick check-in. 💙\n\nHow are things going for you at work?\n• Excellent (5) 😊\n• Good (4) 👍\n• Okay (3) 😐\n• Challenging (2) 😔\n• Difficult (1) 😞\n\nIf you'd like to share more details or have any concerns, please feel free to add a comment. 💬\n\nThank you for helping us support our team better! 🙏"
     }
   ]
 }
@@ -105,7 +105,8 @@ const response = await twilioClient.messages.create({
   to: `whatsapp:${employee.phone}`,
   contentSid: 'HX...', // Template SID from Twilio
   contentVariables: JSON.stringify({
-    "1": employee.first_name
+    "1": employee.first_name,
+    "2": employee.organization.name
   })
 })
 ```

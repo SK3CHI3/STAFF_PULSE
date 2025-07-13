@@ -532,13 +532,14 @@ export default function SuperAdminDashboard() {
                 )}
               />
                 <YAxis stroke="#6B7280" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                    border: 'none', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    border: 'none',
                     borderRadius: '12px',
                     boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                  }} 
+                  }}
+                  labelStyle={{ color: '#111827' }}
                 />
                 <Area type="monotone" dataKey="organizations" stroke="#3B82F6" fillOpacity={1} fill="url(#colorOrgs)" />
                 <Area type="monotone" dataKey="responses" stroke="#10B981" fillOpacity={1} fill="url(#colorResponses)" />
@@ -561,13 +562,14 @@ export default function SuperAdminDashboard() {
                 )}
               />
                 <YAxis domain={[1, 5]} stroke="#6B7280" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)', 
-                    border: 'none', 
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                    border: 'none',
                     borderRadius: '12px',
                     boxShadow: '0 10px 25px rgba(0, 0, 0, 0.1)'
-                  }} 
+                  }}
+                  labelStyle={{ color: '#111827' }}
                 />
                 <Line 
                   type="monotone" 

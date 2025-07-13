@@ -13,28 +13,8 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
-  // Configure for Netlify deployment
-  images: {
-    unoptimized: true,
-  },
-  // Add proper headers for RSC
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-        ],
-      },
-    ];
-  },
+  // Let Netlify handle image optimization automatically
+  // No need to set images.unoptimized = true
 };
 
 export default nextConfig;

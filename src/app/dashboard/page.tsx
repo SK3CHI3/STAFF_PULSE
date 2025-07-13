@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
-import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
-import { signOut } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+// Remove this import - signOut is available from useAuth hook
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import ReactDatePicker from 'react-datepicker';
@@ -11,13 +12,14 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { setHours, setMinutes } from 'date-fns';
 
 function Dashboard() {
-  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+  const { profile, signOut } = useAuth()
+  const router = useRouter()
 
 
   const [loading, setLoading] = useState(false)
   const [timeRange, setTimeRange] = useState('30d')
   const [showCheckinModal, setShowCheckinModal] = useState(false)
-  const [selectedDept, setSelectedDept] = useState('all')
+  const [selectedDept, setSelectedDept] = useState('All Departments')
   const [sendType, setSendType] = useState<'now' | 'schedule'>('now')
   const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
   const [dateError, setDateError] = useState<string | null>(null)
@@ -30,17 +32,47 @@ function Dashboard() {
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ]
 
-  // Mock departments (replace with real fetch if needed)
-  const mockDepartments = [
-    { name: 'All Departments', value: 'all' },
-    { name: 'Engineering', value: 'Engineering' },
-    { name: 'Design', value: 'Design' },
-    { name: 'Marketing', value: 'Marketing' },
-    { name: 'Sales', value: 'Sales' },
-  ]
+  // Enhanced Loading Components
+  const PulseLoader = ({ size = 'md', color = 'blue' }: { size?: 'sm' | 'md' | 'lg', color?: string }) => {
+    const sizeClasses = {
+      sm: 'h-4 w-4',
+      md: 'h-6 w-6',
+      lg: 'h-8 w-8'
+    }
+
+    return (
+      <div className="flex items-center justify-center">
+        <div className={`${sizeClasses[size]} relative`}>
+          <div className={`absolute inset-0 rounded-full bg-${color}-200 animate-ping`}></div>
+          <div className={`relative rounded-full ${sizeClasses[size]} bg-${color}-600 animate-pulse`}></div>
+        </div>
+      </div>
+    )
+  }
+
+  const SkeletonLoader = ({ className = '' }: { className?: string }) => (
+    <div className={`animate-pulse bg-gray-200 rounded ${className}`}></div>
+  )
+
+  const DotsLoader = ({ color = 'blue' }: { color?: string }) => (
+    <div className="flex items-center space-x-1">
+      <div className={`w-2 h-2 bg-${color}-600 rounded-full animate-bounce`} style={{ animationDelay: '0ms' }}></div>
+      <div className={`w-2 h-2 bg-${color}-600 rounded-full animate-bounce`} style={{ animationDelay: '150ms' }}></div>
+      <div className={`w-2 h-2 bg-${color}-600 rounded-full animate-bounce`} style={{ animationDelay: '300ms' }}></div>
+    </div>
+  )
+
+
 
   // Add new state for dashboard metrics
-  const [employeeStats, setEmployeeStats] = useState({ total: 0, avgMood: 0, responseRate: 0 });
+  const [employeeStats, setEmployeeStats] = useState({
+    total: 0,
+    avgMood: 0,
+    responseRate: 0,
+    totalLastMonth: 0,
+    responseRateLastWeek: 0,
+    moodCategory: 'Unknown'
+  });
   const [employeeStatsLoading, setEmployeeStatsLoading] = useState(true);
   const [employeeStatsError, setEmployeeStatsError] = useState<string | null>(null);
 
@@ -58,6 +90,7 @@ function Dashboard() {
 
   const [hasHydrated, setHasHydrated] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   useEffect(() => { setHasHydrated(true) }, [])
@@ -70,19 +103,58 @@ function Dashboard() {
     setEmployeeStatsLoading(true);
     setEmployeeStatsError(null);
     try {
+      // Get current date ranges
+      const now = new Date();
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+      // Fetch all employees with mood check-ins and creation dates
       const { data, error } = await supabase
         .from('employees')
-        .select('id, mood_checkins(mood_score)')
+        .select('id, created_at, mood_checkins(mood_score, created_at)')
         .eq('organization_id', orgId);
 
       if (error) throw error;
 
       const total = data?.length || 0;
-      const allMoods = data?.flatMap(emp => emp.mood_checkins?.map(c => c.mood_score) || []) || [];
+
+      // Calculate employees created last month for trend
+      const totalLastMonth = data?.filter(emp =>
+        new Date(emp.created_at) >= oneMonthAgo
+      ).length || 0;
+
+      // Get all mood check-ins with dates
+      const allMoodCheckins = data?.flatMap(emp =>
+        emp.mood_checkins?.map(c => ({
+          mood_score: c.mood_score,
+          created_at: new Date(c.created_at)
+        })) || []
+      ) || [];
+
+      // Current period calculations
+      const allMoods = allMoodCheckins.map(c => c.mood_score);
       const avgMood = allMoods.length > 0 ? allMoods.reduce((a, b) => a + b, 0) / allMoods.length : 0;
       const responseRate = total > 0 ? (allMoods.length / total) * 100 : 0;
 
-      setEmployeeStats({ total, avgMood, responseRate });
+      // Last week's response rate for comparison
+      const lastWeekCheckins = allMoodCheckins.filter(c => c.created_at >= oneWeekAgo);
+      const responseRateLastWeek = total > 0 ? (lastWeekCheckins.length / total) * 100 : 0;
+
+      // Mood category based on average
+      let moodCategory = 'Unknown';
+      if (avgMood >= 4.5) moodCategory = 'Excellent';
+      else if (avgMood >= 3.5) moodCategory = 'Good';
+      else if (avgMood >= 2.5) moodCategory = 'Fair';
+      else if (avgMood > 0) moodCategory = 'Needs attention';
+
+      setEmployeeStats({
+        total,
+        avgMood,
+        responseRate,
+        totalLastMonth,
+        responseRateLastWeek,
+        moodCategory
+      });
     } catch (error: any) {
       setEmployeeStatsError(error.message || 'Failed to fetch employee stats');
     } finally {
@@ -134,18 +206,23 @@ function Dashboard() {
     }
   }, []);
 
-  // Fetch mood trends (use AI insights or mood_checkins as available)
+  // Fetch mood trends from actual mood check-ins
   const fetchMoodTrends = useCallback(async (orgId: string) => {
     if (!orgId) return;
     setMoodTrendsLoading(true);
     setMoodTrendsError(null);
     try {
+      // Get mood check-ins for the organization with employee data
       const { data, error } = await supabase
-        .from('ai_insights')
-        .select('*')
-        .eq('organization_id', orgId)
+        .from('mood_checkins')
+        .select(`
+          mood_score,
+          created_at,
+          employees!inner(organization_id)
+        `)
+        .eq('employees.organization_id', orgId)
         .order('created_at', { ascending: false })
-        .limit(30);
+        .limit(1000); // Get more data for better trend analysis
 
       if (error) throw error;
       setMoodTrends(data || []);
@@ -161,51 +238,80 @@ function Dashboard() {
     if (moodTrendsLoading || moodTrendsError) return [];
     if (!moodTrends || moodTrends.length === 0) return [];
 
+    const now = new Date();
     let processedData: { day: string, mood: number }[] = [];
+
     if (timeRange === '7d') {
-      processedData = moodTrends
-        .filter((insight: any) => insight.created_at && insight.data_points && insight.data_points.average_mood)
-        .slice(0, 7)
-        .map((insight: any) => ({
-          day: hasHydrated ? new Date(insight.created_at).toLocaleDateString(undefined, { weekday: 'short' }) : insight.created_at.slice(0, 10),
-          mood: Number(insight.data_points.average_mood)
-        }));
-    } else if (timeRange === '30d') {
-      const weeks: { [key: string]: number[] } = {};
-      moodTrends.forEach((insight: any) => {
-        if (insight.created_at && insight.data_points && insight.data_points.average_mood) {
-          const date = new Date(insight.created_at);
-          const week = `${date.getFullYear()}-W${Math.ceil(date.getDate() / 7)}`;
-          if (!weeks[week]) weeks[week] = [];
-          weeks[week].push(Number(insight.data_points.average_mood));
+      // Group by day for last 7 days
+      const dailyMoods: { [key: string]: number[] } = {};
+
+      // Initialize last 7 days
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const dayKey = date.toISOString().split('T')[0];
+        dailyMoods[dayKey] = [];
+      }
+
+      // Group mood check-ins by day
+      moodTrends.forEach((checkin: any) => {
+        const checkinDate = new Date(checkin.created_at);
+        const dayKey = checkinDate.toISOString().split('T')[0];
+        if (dailyMoods.hasOwnProperty(dayKey)) {
+          dailyMoods[dayKey].push(checkin.mood_score);
         }
       });
-      processedData = Object.entries(weeks).map(([week, moods]) => ({
-        day: week,
-        mood: moods.reduce((a, b) => a + b, 0) / moods.length
-      })).slice(0, 4);
+
+      // Calculate daily averages
+      processedData = Object.entries(dailyMoods).map(([dayKey, moods]) => ({
+        day: hasHydrated ? new Date(dayKey).toLocaleDateString(undefined, { weekday: 'short' }) : dayKey.slice(5),
+        mood: moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 0
+      }));
+
+    } else if (timeRange === '30d') {
+      // Group by week for last 30 days
+      const weeklyMoods: { [key: string]: number[] } = {};
+
+      moodTrends.forEach((checkin: any) => {
+        const checkinDate = new Date(checkin.created_at);
+        const weekStart = new Date(checkinDate);
+        weekStart.setDate(checkinDate.getDate() - checkinDate.getDay());
+        const weekKey = weekStart.toISOString().split('T')[0];
+
+        if (!weeklyMoods[weekKey]) weeklyMoods[weekKey] = [];
+        weeklyMoods[weekKey].push(checkin.mood_score);
+      });
+
+      processedData = Object.entries(weeklyMoods)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-4) // Last 4 weeks
+        .map(([weekKey, moods]) => ({
+          day: hasHydrated ? `Week of ${new Date(weekKey).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : weekKey.slice(5),
+          mood: moods.reduce((a, b) => a + b, 0) / moods.length
+        }));
+
     } else if (timeRange === '90d') {
-      const months = getLastNMonths(3);
-      processedData = months.map(month => ({
-        day: month,
-        mood: Math.random() * 2 + 3
-      }));
+      // Group by month for last 90 days
+      const monthlyMoods: { [key: string]: number[] } = {};
+
+      moodTrends.forEach((checkin: any) => {
+        const checkinDate = new Date(checkin.created_at);
+        const monthKey = `${checkinDate.getFullYear()}-${String(checkinDate.getMonth() + 1).padStart(2, '0')}`;
+
+        if (!monthlyMoods[monthKey]) monthlyMoods[monthKey] = [];
+        monthlyMoods[monthKey].push(checkin.mood_score);
+      });
+
+      processedData = Object.entries(monthlyMoods)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .slice(-3) // Last 3 months
+        .map(([monthKey, moods]) => ({
+          day: hasHydrated ? new Date(monthKey + '-01').toLocaleDateString(undefined, { month: 'short', year: 'numeric' }) : monthKey,
+          mood: moods.reduce((a, b) => a + b, 0) / moods.length
+        }));
     }
 
-    if (processedData.length === 0) {
-      const fallbackData = timeRange === '7d'
-        ? ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-        : timeRange === '30d'
-        ? ['Week 1', 'Week 2', 'Week 3', 'Week 4']
-        : getLastNMonths(3);
-
-      processedData = fallbackData.map(day => ({
-        day,
-        mood: Math.random() * 2 + 3
-      }));
-    }
-
-    return processedData;
+    // Filter out days with no data (mood = 0) and return only actual data
+    return processedData.filter(item => item.mood > 0);
   }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
 
   // Load dashboard data function
@@ -244,29 +350,89 @@ function Dashboard() {
     }
   }, [fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends]);
 
+  // Export organization data
+  const handleExportReport = async () => {
+    if (!profile?.organization?.id) return;
+
+    setExporting(true);
+    try {
+      const response = await fetch(`/api/organization/export?organizationId=${profile.organization.id}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to export data');
+      }
+
+      // Get the filename from the response headers
+      const contentDisposition = response.headers.get('content-disposition');
+      const filename = contentDisposition
+        ? contentDisposition.split('filename=')[1]?.replace(/"/g, '')
+        : `organization_export_${profile.organization.id}.zip`;
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+    } catch (error: any) {
+      console.error('Export error:', error);
+      alert(error.message || 'Failed to export report');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Load dashboard data when profile is available - SINGLE useEffect
   useEffect(() => {
     const orgId = profile?.organization?.id;
+    console.log('🔄 [DASHBOARD] useEffect triggered, orgId:', orgId);
     if (orgId) {
+      console.log('🚀 [DASHBOARD] Loading dashboard data...');
       loadDashboardData(orgId) // Pass orgId explicitly
+    }
+  }, [profile?.organization?.id, loadDashboardData]);
+
+  // Fetch real departments from database
+  const fetchDepartmentsForCheckin = useCallback(async () => {
+    if (!profile?.organization?.id) return;
+
+    try {
+      // Fetch departments from API
+      const res = await fetch(`/api/departments?organizationId=${profile.organization.id}`);
+      const result = await res.json();
+
+      if (result.success && result.departments) {
+        // Add "All Departments" option at the beginning
+        const deptList = [
+          { name: 'All Departments', count: 0 },
+          ...result.departments.map((d: any) => ({ name: d.name, count: 0 }))
+        ];
+        setDepartments(deptList);
+      } else {
+        // Fallback to "All Departments" only
+        setDepartments([{ name: 'All Departments', count: 0 }]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch departments:', error);
+      // Fallback to "All Departments" only
+      setDepartments([{ name: 'All Departments', count: 0 }]);
+    } finally {
+      setDepartmentsLoading(false);
     }
   }, [profile?.organization?.id]);
 
   // Fetch departments when modal opens
   useEffect(() => {
-    if (showCheckinModal) {
+    if (showCheckinModal && profile?.organization?.id) {
       setDepartmentsLoading(true);
-      setTimeout(() => {
-        setDepartments([
-          { name: 'Engineering', count: 12 },
-          { name: 'Design', count: 8 },
-          { name: 'Marketing', count: 6 },
-          { name: 'Sales', count: 10 },
-        ]);
-        setDepartmentsLoading(false);
-      }, 500);
+      fetchDepartmentsForCheckin();
     }
-  }, [showCheckinModal]);
+  }, [showCheckinModal, profile?.organization?.id, fetchDepartmentsForCheckin]);
 
   // Toast timer
   useEffect(() => {
@@ -276,28 +442,7 @@ function Dashboard() {
     }
   }, [toast.message]);
 
-  // Simple auth guards - MOVED AFTER ALL HOOKS
-  if (authState === 'loading') {
-    return <LoadingState message="Loading your dashboard..." />
-  }
-
-  if (needsAuth) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth/login'
-    }
-    return <LoadingState message="Redirecting to login..." />
-  }
-
-  if (needsOrg) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard/organization/setup'
-    }
-    return <LoadingState message="Setting up your organization..." />
-  }
-
-  if (!isAuthenticated) {
-    return <ErrorState message="Authentication failed" />
-  }
+  // Auth guards are handled by the dashboard layout, no need to duplicate them here
 
   // Helper to get last N month names
   function getLastNMonths(n: number) {
@@ -317,7 +462,7 @@ function Dashboard() {
   const handleSignOut = async () => {
     try {
       await signOut()
-      window.location.href = '/'
+      router.push('/')
     } catch (error) {
       console.error('Sign out error:', error)
     }
@@ -428,10 +573,7 @@ function Dashboard() {
       <header className="bg-white border-b border-gray-100">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center">
-                <div className="w-6 h-6 bg-white rounded-md"></div>
-              </div>
+            <div className="flex items-center">
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">StaffPulse Dashboard</h1>
                 <p className="text-gray-600 text-sm mt-1">
@@ -450,11 +592,23 @@ function Dashboard() {
                 </svg>
                 <span>Send Check-in</span>
               </button>
-              <button className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center space-x-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span>Export Report</span>
+              <button
+                onClick={handleExportReport}
+                disabled={exporting}
+                className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {exporting ? (
+                  <div className="flex items-center space-x-1">
+                    <div className="w-1 h-1 bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-1 h-1 bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-1 h-1 bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  </div>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                )}
+                <span>{exporting ? 'Exporting...' : 'Export Report'}</span>
               </button>
               <div className="flex items-center space-x-3 border-l border-gray-200 pl-3">
                 <div className="text-right">
@@ -483,16 +637,21 @@ function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Employees</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
+                <div className="text-3xl font-bold text-gray-900 mt-2">
                   {employeeStatsLoading ? (
-                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></span>
+                    <div className="flex items-center">
+                      <SkeletonLoader className="h-8 w-16" />
+                    </div>
                   ) : employeeStatsError ? (
                     <span className="text-red-600">{employeeStatsError}</span>
                   ) : (
                     employeeStats.total
                   )}
+                </div>
+                <p className={`text-xs mt-1 ${employeeStats.totalLastMonth > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                  {employeeStatsLoading ? '...' :
+                   employeeStats.totalLastMonth > 0 ? `+${employeeStats.totalLastMonth} this month` : 'No new employees this month'}
                 </p>
-                <p className="text-xs text-green-600 mt-1">+2 this month</p>
               </div>
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
                 <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -506,16 +665,26 @@ function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Response Rate</p>
-                <p className="text-3xl font-bold text-green-600 mt-2">
+                <div className="text-3xl font-bold text-green-600 mt-2">
                   {employeeStatsLoading ? (
-                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600 mr-2"></span>
+                    <div className="flex items-center">
+                      <SkeletonLoader className="h-8 w-20" />
+                    </div>
                   ) : employeeStatsError ? (
                     <span className="text-red-600">{employeeStatsError}</span>
                   ) : (
-                    employeeStats.responseRate
-                  )}%
+                    `${employeeStats.responseRate}%`
+                  )}
+                </div>
+                <p className={`text-xs mt-1 ${
+                  employeeStatsLoading ? 'text-gray-500' :
+                  employeeStats.responseRate > employeeStats.responseRateLastWeek ? 'text-green-600' :
+                  employeeStats.responseRate < employeeStats.responseRateLastWeek ? 'text-red-600' : 'text-gray-500'
+                }`}>
+                  {employeeStatsLoading ? '...' :
+                   employeeStats.responseRate === employeeStats.responseRateLastWeek ? 'No change from last week' :
+                   `${employeeStats.responseRate > employeeStats.responseRateLastWeek ? '+' : ''}${(employeeStats.responseRate - employeeStats.responseRateLastWeek).toFixed(1)}% from last week`}
                 </p>
-                <p className="text-xs text-green-600 mt-1">+5% from last week</p>
               </div>
               <div className="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center">
                 <svg className="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -529,15 +698,25 @@ function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Average Mood</p>
-                <p className="text-3xl font-bold text-blue-600 mt-2">
+                <div className="text-3xl font-bold text-blue-600 mt-2">
                   {employeeStatsLoading ? (
-                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mr-2"></span>
+                    <div className="flex items-center">
+                      <SkeletonLoader className="h-8 w-12" />
+                    </div>
                   ) : employeeStatsError ? (
                     <span className="text-red-600">{employeeStatsError}</span>
                   ) : (
                     employeeStats.avgMood.toFixed(1)
-                  )}</p>
-                <p className="text-xs text-blue-600 mt-1">Excellent range</p>
+                  )}
+                </div>
+                <p className={`text-xs mt-1 ${
+                  employeeStatsLoading ? 'text-gray-500' :
+                  employeeStats.avgMood >= 4.5 ? 'text-green-600' :
+                  employeeStats.avgMood >= 3.5 ? 'text-blue-600' :
+                  employeeStats.avgMood >= 2.5 ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                  {employeeStatsLoading ? '...' : employeeStats.moodCategory}
+                </p>
               </div>
               <div className="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center">
                 <svg className="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -551,16 +730,24 @@ function Dashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-600">Active Alerts</p>
-                <p className="text-3xl font-bold text-orange-600 mt-2">
+                <div className="text-3xl font-bold text-orange-600 mt-2">
                   {alertsLoading ? (
-                    <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-orange-600 mr-2"></span>
+                    <div className="flex items-center">
+                      <SkeletonLoader className="h-8 w-8" />
+                    </div>
                   ) : alertsError ? (
                     <span className="text-red-600">{alertsError}</span>
                   ) : (
                     alerts.length
                   )}
+                </div>
+                <p className={`text-xs mt-1 ${
+                  alertsLoading ? 'text-gray-500' :
+                  alerts.length > 0 ? 'text-orange-600' : 'text-green-600'
+                }`}>
+                  {alertsLoading ? '...' :
+                   alerts.length > 0 ? 'Needs attention' : 'All good'}
                 </p>
-                <p className="text-xs text-orange-600 mt-1">Needs attention</p>
               </div>
               <div className="w-14 h-14 bg-orange-100 rounded-2xl flex items-center justify-center">
                 <svg className="w-7 h-7 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -592,12 +779,38 @@ function Dashboard() {
             </div>
             <div className="h-72 w-full">
               {moodTrendsLoading ? (
-                <div className="flex items-center justify-center h-full">
-                  <span className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></span>
-                  <span className="ml-2 text-gray-700">Loading mood trends...</span>
+                <div className="flex flex-col items-center justify-center h-full space-y-4">
+                  <div className="relative">
+                    <PulseLoader size="lg" color="blue" />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <DotsLoader color="blue" />
+                    <span className="text-gray-600 font-medium">Loading mood trends</span>
+                  </div>
+                  <div className="w-full max-w-xs">
+                    <div className="flex space-x-2">
+                      <SkeletonLoader className="h-16 w-8" />
+                      <SkeletonLoader className="h-20 w-8" />
+                      <SkeletonLoader className="h-12 w-8" />
+                      <SkeletonLoader className="h-24 w-8" />
+                      <SkeletonLoader className="h-16 w-8" />
+                      <SkeletonLoader className="h-18 w-8" />
+                      <SkeletonLoader className="h-14 w-8" />
+                    </div>
+                  </div>
                 </div>
               ) : moodTrendsError ? (
                 <div className="flex items-center justify-center h-full text-red-600">{moodTrendsError}</div>
+              ) : chartData.length === 0 ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center text-gray-500">
+                    <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <p className="text-lg font-medium">No mood data available</p>
+                    <p className="text-sm mt-1">Start collecting mood check-ins to see trends here</p>
+                  </div>
+                </div>
               ) : (
               <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
@@ -625,9 +838,21 @@ function Dashboard() {
 
             <div className="space-y-4">
               {recentResponsesLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <span className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></span>
-                  <span className="ml-2 text-gray-700">Loading responses...</span>
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg animate-pulse">
+                      <SkeletonLoader className="h-10 w-10 rounded-full" />
+                      <div className="flex-1 space-y-2">
+                        <SkeletonLoader className="h-4 w-32" />
+                        <SkeletonLoader className="h-3 w-24" />
+                      </div>
+                      <SkeletonLoader className="h-8 w-16 rounded-full" />
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-center py-4">
+                    <DotsLoader color="blue" />
+                    <span className="ml-3 text-gray-600">Loading responses</span>
+                  </div>
                 </div>
               ) : recentResponsesError ? (
                 <div className="text-center text-red-600 py-8">{recentResponsesError}</div>
@@ -672,7 +897,10 @@ function Dashboard() {
               <div className="mb-4">
                 <label className="block text-gray-900 font-medium mb-2">Department</label>
                 {departmentsLoading ? (
-                  <div className="flex items-center space-x-2 text-gray-700"><span className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></span> Loading...</div>
+                  <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
+                    <DotsLoader color="blue" />
+                    <span className="text-blue-700 font-medium">Loading departments</span>
+                  </div>
                 ) : departments.length > 1 ? (
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
@@ -779,7 +1007,14 @@ function Dashboard() {
                 disabled={saving || !!dateError || (sendType === 'schedule' && (!scheduleDate || (recurrence === 'weekly' && dayOfWeek === null)))}
               >
                 {saving ? (
-                  <span className="flex items-center"><span className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></span>Saving...</span>
+                  <span className="flex items-center">
+                    <div className="flex items-center space-x-1 mr-3">
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                    Saving
+                  </span>
                 ) : (
                   <span className="text-white">{sendType === 'now' ? 'Send Now' : 'Save Schedule'}</span>
                 )}

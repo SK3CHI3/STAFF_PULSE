@@ -62,8 +62,8 @@ export function useAuthGuard(): AuthGuardResult {
       return 'loading'
     }
 
-    // User and profile but no organization = setup incomplete
-    if (!profile.organization_id) {
+    // User and profile but no organization = setup incomplete (except for super admins)
+    if (!profile.organization_id && profile.role !== 'super_admin') {
       console.log('🔐 [AuthGuard] State: no-organization')
       return 'no-organization'
     }

@@ -8,14 +8,22 @@ export async function POST(req: NextRequest) {
 
     const { firstName, lastName, email, password, companyName, teamSize, userId } = data;
 
-    // Check required fields
+    // Check if this is the super admin email
+    const isSuperAdmin = email === 'admin@staffpulse.com';
+    console.log('📝 [Signup API] Is super admin:', isSuperAdmin);
+
+    // Check required fields (super admin has different requirements)
     const missingFields = [];
     if (!firstName) missingFields.push('firstName');
     if (!lastName) missingFields.push('lastName');
     if (!email) missingFields.push('email');
-    if (!companyName) missingFields.push('companyName');
-    if (!teamSize) missingFields.push('teamSize');
     if (!userId) missingFields.push('userId');
+
+    // Only require company info for non-super admin users
+    if (!isSuperAdmin) {
+      if (!companyName) missingFields.push('companyName');
+      if (!teamSize) missingFields.push('teamSize');
+    }
 
     if (missingFields.length > 0) {
       console.error('📝 [Signup API] Missing fields:', missingFields);
@@ -32,7 +40,7 @@ export async function POST(req: NextRequest) {
 
     const supabaseAdmin = createSupabaseAdmin();
 
-    // Check if email already exists in profiles or organizations
+    // Check if email already exists in profiles
     const { data: existingProfile } = await supabaseAdmin
       .from('profiles')
       .select('id')
@@ -41,49 +49,57 @@ export async function POST(req: NextRequest) {
     if (existingProfile) {
       return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 400 });
     }
-    const { data: existingOrg } = await supabaseAdmin
-      .from('organizations')
-      .select('id')
-      .eq('email', email)
-      .maybeSingle();
-    if (existingOrg) {
-      return NextResponse.json({ error: 'An organization with this email already exists.' }, { status: 400 });
+
+    // For non-super admin users, check organization email conflicts and create organization
+    let orgData = null;
+    if (!isSuperAdmin) {
+      const { data: existingOrg } = await supabaseAdmin
+        .from('organizations')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+      if (existingOrg) {
+        return NextResponse.json({ error: 'An organization with this email already exists.' }, { status: 400 });
+      }
+
+      // 2. Create organization
+      console.log('📝 [Signup API] Creating organization:', companyName);
+      const { data: createdOrg, error: orgError } = await supabaseAdmin
+        .from('organizations')
+        .insert({
+          name: companyName,
+          email,
+          employee_count: parseInt(teamSize.split('-')[0]) || 1,
+          subscription_plan: 'free'
+        })
+        .select()
+        .single();
+
+      if (orgError) {
+        console.error('📝 [Signup API] Organization creation error:', orgError);
+        return NextResponse.json({ error: 'Failed to create organization: ' + orgError.message }, { status: 500 });
+      }
+
+      if (!createdOrg) {
+        console.error('📝 [Signup API] No organization data returned');
+        return NextResponse.json({ error: 'Failed to create organization: No data returned' }, { status: 500 });
+      }
+
+      orgData = createdOrg;
+      console.log('📝 [Signup API] Organization created:', orgData.id);
+    } else {
+      console.log('📝 [Signup API] Skipping organization creation for super admin');
     }
-
-    // 2. Create organization
-    console.log('📝 [Signup API] Creating organization:', companyName);
-    const { data: orgData, error: orgError } = await supabaseAdmin
-      .from('organizations')
-      .insert({
-        name: companyName,
-        email,
-        employee_count: parseInt(teamSize.split('-')[0]) || 1,
-        subscription_plan: 'free'
-      })
-      .select()
-      .single();
-
-    if (orgError) {
-      console.error('📝 [Signup API] Organization creation error:', orgError);
-      return NextResponse.json({ error: 'Failed to create organization: ' + orgError.message }, { status: 500 });
-    }
-
-    if (!orgData) {
-      console.error('📝 [Signup API] No organization data returned');
-      return NextResponse.json({ error: 'Failed to create organization: No data returned' }, { status: 500 });
-    }
-
-    console.log('📝 [Signup API] Organization created:', orgData.id);
 
     // 3. Create profile
     console.log('📝 [Signup API] Creating profile for user:', userId);
     const profileUpsertData = {
       id: userId,
-      organization_id: orgData.id,
+      organization_id: isSuperAdmin ? null : orgData.id,
       first_name: firstName,
       last_name: lastName,
       email,
-      role: 'hr_admin'
+      role: isSuperAdmin ? 'super_admin' : 'hr_admin'
     };
 
     console.log('📝 [Signup API] Profile data:', profileUpsertData);

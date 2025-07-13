@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useAuth } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -10,35 +11,72 @@ export default function Login() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
 
-  const { signIn, refreshProfile } = useAuth()
+  const router = useRouter()
+  const { signIn, user } = useAuth()
+
+  // Listen for successful authentication
+  useEffect(() => {
+    if (user && isLoading) {
+      console.log('📝 [Login] User authenticated, redirecting to dashboard...')
+      setIsLoading(false)
+      router.push('/dashboard')
+    }
+  }, [user, isLoading, router])
+
+  // Safety timeout to prevent stuck loading states - but only for very long delays
+  useEffect(() => {
+    if (isLoading) {
+      const timeout = setTimeout(() => {
+        console.warn('📝 [Login] Loading timeout - resetting loading state')
+        setIsLoading(false)
+      }, 30000) // 30 second safety timeout (increased from 15s)
+
+      return () => clearTimeout(timeout)
+    }
+  }, [isLoading])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    console.log('📝 [Login] ========== LOGIN ATTEMPT STARTED ==========')
     console.log('📝 [Login] Form submitted with email:', email)
+    console.log('📝 [Login] Password provided:', password ? 'YES' : 'NO')
+    console.log('📝 [Login] Setting loading to true...')
     setIsLoading(true)
+    console.log('📝 [Login] Loading state set to true')
 
     try {
       console.log('📝 [Login] Calling signIn function...')
-      const { error } = await signIn({ email, password })
-      console.log('📝 [Login] SignIn response:', { error: error?.message })
+      console.log('📝 [Login] Email:', email, 'Password length:', password.length)
 
-      if (error) {
-        console.error('📝 [Login] Sign-in error:', error)
-        alert(error.message)
-      } else {
-        console.log('📝 [Login] Sign-in successful, refreshing profile...')
-        // Immediately refresh profile after login
-        await refreshProfile()
-        console.log('📝 [Login] Profile refreshed, redirecting to dashboard...')
-        // Redirect to dashboard
-        window.location.href = '/dashboard'
-      }
+      // Start the sign-in process but don't wait for it to complete
+      // The useEffect above will handle the redirect when user state changes
+      signIn({ email, password }).then(signInResult => {
+        console.log('📝 [Login] SignIn result:', {
+          hasUser: !!signInResult.user,
+          hasError: !!signInResult.error,
+          errorMessage: signInResult.error?.message,
+          userId: signInResult.user?.id
+        })
+
+        if (signInResult.error) {
+          console.error('📝 [Login] Sign-in error:', signInResult.error)
+          const errorMessage = signInResult.error.message || 'Login failed. Please check your credentials.'
+          alert(errorMessage)
+          setIsLoading(false) // Reset loading immediately on error
+        }
+      }).catch(err => {
+        console.error('📝 [Login] SignIn promise rejected:', err)
+        alert(err.message || 'Login failed')
+        setIsLoading(false)
+      })
+
+      // Don't wait for signIn to complete - let the auth state change handle the redirect
+
     } catch (err: any) {
       console.error('📝 [Login] Unexpected error:', err)
+      console.error('📝 [Login] Error stack:', err.stack)
       alert(err.message || 'Login failed')
-    } finally {
-      console.log('📝 [Login] Setting loading to false')
-      setIsLoading(false)
+      setIsLoading(false) // Reset loading on error
     }
   }
 

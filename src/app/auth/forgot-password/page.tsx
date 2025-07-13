@@ -13,8 +13,9 @@ export default function ForgotPassword() {
     setIsLoading(true)
 
     try {
-      const { resetPassword } = await import('@/lib/auth')
-      const { error } = await resetPassword(email)
+      // Import supabase directly for password reset
+      const { supabase } = await import('@/lib/supabase')
+      const { error } = await supabase.auth.resetPasswordForEmail(email)
 
       if (error) {
         alert(error.message)

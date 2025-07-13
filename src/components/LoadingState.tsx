@@ -52,11 +52,12 @@ export function ErrorState({
           onClick={() => {
             if (typeof window !== 'undefined') {
               localStorage.clear()
+              // Use router refresh instead of hard reload
               window.location.href = '/auth/login'
             }
           }}
         >
-          Log Out
+          Go to Login
         </button>
       </div>
     </div>

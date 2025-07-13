@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useAuth } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function Signup() {
   const [formData, setFormData] = useState({
@@ -19,6 +20,21 @@ export default function Signup() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [acceptTerms, setAcceptTerms] = useState(false)
 
+  const router = useRouter()
+  const { signUp, refreshProfile } = useAuth()
+
+  // Safety timeout to prevent stuck loading states
+  useEffect(() => {
+    if (isLoading) {
+      const timeout = setTimeout(() => {
+        console.warn('📝 [Signup] Loading timeout - resetting loading state')
+        setIsLoading(false)
+      }, 20000) // 20 second safety timeout for signup (longer than login)
+
+      return () => clearTimeout(timeout)
+    }
+  }, [isLoading])
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({
@@ -26,8 +42,6 @@ export default function Signup() {
       [name]: value
     }))
   }
-
-  const { signUp, refreshProfile } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -43,30 +57,66 @@ export default function Signup() {
     setIsLoading(true)
 
     try {
-      const { error } = await signUp(formData)
-      if (error) {
-        alert(error.message || 'Failed to create user account')
+      console.log('📝 [Signup] Starting signup process for:', formData.email)
+      console.log('📝 [Signup] Form data:', { ...formData, password: '[HIDDEN]' })
+
+      // Step 1: Create user account
+      const signUpResult = await signUp(formData)
+      console.log('📝 [Signup] SignUp result:', {
+        hasUser: !!signUpResult.user,
+        hasError: !!signUpResult.error,
+        errorMessage: signUpResult.error?.message
+      })
+
+      const { user, error } = signUpResult
+      if (error || !user) {
+        console.error('📝 [Signup] User creation failed:', error)
+        alert(error?.message || 'Failed to create user account')
         setIsLoading(false)
         return
       }
-      // Immediately refresh profile after signup
-      await refreshProfile()
-      // 2. Call secure API route to create org/profile
+
+      console.log('📝 [Signup] User created successfully, creating organization...', user.id)
+
+      // Step 2: Create organization and profile
+      const apiPayload = { ...formData, userId: user.id }
+      console.log('📝 [Signup] API payload:', { ...apiPayload, password: '[HIDDEN]' })
+
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, userId: null }) // userId will be set by backend if needed
+        body: JSON.stringify(apiPayload)
       })
+
+      console.log('📝 [Signup] API response status:', res.status)
+
       const result = await res.json()
+      console.log('📝 [Signup] API response:', result)
+
       if (!result.success) {
+        console.error('📝 [Signup] Organization creation failed:', result.error)
         alert(result.error || 'Failed to complete signup')
         setIsLoading(false)
         return
       }
-      window.location.href = '/dashboard'
+
+      console.log('📝 [Signup] Signup complete, refreshing profile...')
+
+      // Step 3: Refresh profile to get the new organization data
+      try {
+        await refreshProfile()
+        console.log('📝 [Signup] Profile refreshed, redirecting to dashboard...')
+      } catch (profileError) {
+        console.warn('📝 [Signup] Profile refresh failed, but continuing:', profileError)
+      }
+
+      // Step 4: Navigate to dashboard
+      router.push('/dashboard')
+
+      // Don't reset loading here - let the redirect happen
     } catch (err: any) {
+      console.error('📝 [Signup] Unexpected error:', err)
       alert(err.message || 'Signup failed')
-    } finally {
       setIsLoading(false)
     }
   }

@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useAuthGuard } from '@/hooks/useAuthGuard'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
 
 export default function Settings() {
-  const { authState, profile, isAuthenticated, needsAuth, needsOrg } = useAuthGuard()
+  const { profile } = useAuth()
   const [activeTab, setActiveTab] = useState('general')
   const [settings, setSettings] = useState<any>(null)
   const [loading, setLoading] = useState(false)
@@ -14,6 +15,11 @@ export default function Settings() {
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+
+  // Helper function to safely update settings
+  const updateSettings = (updates: any) => {
+    setSettings((prev: any) => ({ ...(prev || {}), ...updates }))
+  }
 
   // Map API fields to UI fields
   function mapApiToUi(api: any) {
@@ -105,27 +111,14 @@ export default function Settings() {
     }
   }, [profile?.organization?.id])
 
-  // Simple auth guards - MOVED AFTER ALL HOOKS
-  if (authState === 'loading') {
+  // Authentication is handled by dashboard layout AuthGuard
+  if (!profile?.organization_id) {
+    return <LoadingState message="Loading organization data..." />
+  }
+
+  // Wait for settings to load
+  if (!settings) {
     return <LoadingState message="Loading settings..." />
-  }
-
-  if (needsAuth) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/auth/login'
-    }
-    return <LoadingState message="Redirecting to login..." />
-  }
-
-  if (needsOrg) {
-    if (typeof window !== 'undefined') {
-      window.location.href = '/dashboard/organization/setup'
-    }
-    return <LoadingState message="Setting up your organization..." />
-  }
-
-  if (!isAuthenticated) {
-    return <ErrorState message="Authentication failed" />
   }
 
   const tabs = [
@@ -145,8 +138,7 @@ export default function Settings() {
     setSuccess(null)
     const payload = { organizationId: profile.organization.id, ...mapUiToApi(settings) }
     // Remove organizationId from update fields for validation
-    const updateFields = { ...payload }
-    delete updateFields.organizationId
+    const { organizationId, ...updateFields } = payload
     // Defensive: must have at least one field to update
     if (Object.keys(updateFields).length === 0) {
       setError('No valid fields to update. Please modify a setting before saving.')
@@ -238,8 +230,8 @@ export default function Settings() {
                       <label className="block text-sm font-semibold text-blue-700 mb-2">Company Name</label>
                       <input
                         type="text"
-                        value={settings.companyName}
-                        onChange={(e) => setSettings({...settings, companyName: e.target.value})}
+                        value={settings?.companyName || ''}
+                        onChange={(e) => updateSettings({ companyName: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       />
                     </div>
@@ -248,7 +240,7 @@ export default function Settings() {
                       <label className="block text-sm font-semibold text-blue-700 mb-2">Check-in Frequency</label>
                       <select
                         value={settings.checkInFrequency}
-                        onChange={(e) => setSettings({...settings, checkInFrequency: e.target.value})}
+                        onChange={(e) => updateSettings({ checkInFrequency: e.target.value })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
                       >
                         <option value="daily">Daily</option>

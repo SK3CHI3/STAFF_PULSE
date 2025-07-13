@@ -126,13 +126,15 @@ export default function Login() {
           {/* Login Form */}
           <div className="glass backdrop-blur-xl bg-white/10 border border-white/20 rounded-3xl p-8 shadow-2xl">
             <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                </svg>
+              <div className="flex items-center justify-center mb-4">
+                <img src="/logo.svg" alt="StaffPulse Logo" className="w-10 h-10 rounded-xl bg-white p-1 shadow mr-3" />
+                <div className="text-left">
+                  <h2 className="text-xl font-bold text-gray-900">StaffPulse</h2>
+                  <p className="text-sm text-gray-500">Employee Wellbeing Platform</p>
+                </div>
               </div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h1>
-              <p className="text-gray-600">Sign in to your StaffPulse dashboard</p>
+              <p className="text-gray-600">Sign in to your dashboard</p>
             </div>
 
             {/* Error and Success Messages */}

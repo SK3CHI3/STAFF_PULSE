@@ -73,10 +73,12 @@ export default function ForgotPassword() {
             {!isSubmitted ? (
               <>
                 <div className="text-center mb-8">
-                  <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                    </svg>
+                  <div className="flex items-center justify-center mb-4">
+                    <img src="/logo.svg" alt="StaffPulse Logo" className="w-12 h-12 rounded-xl bg-white p-2 shadow mr-3" />
+                    <div className="text-left">
+                      <h2 className="text-2xl font-bold text-gray-900">StaffPulse</h2>
+                      <p className="text-sm text-gray-500">Employee Wellbeing Platform</p>
+                    </div>
                   </div>
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">Reset Password</h1>
                   <p className="text-gray-600">Enter your email to receive reset instructions</p>

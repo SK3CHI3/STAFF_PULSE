@@ -1,42 +1,77 @@
-import { useAuth } from '@/lib/auth'
-import { useEffect, useState } from 'react'
+'use client'
 
-export function useAuthGuard() {
-  const { user, profile, loading, initialized } = useAuth()
-  const [authState, setAuthState] = useState<'loading' | 'authenticated' | 'unauthenticated' | 'no-org'>('loading')
+import { useAuth } from '@/contexts/AuthContext'
+import { useMemo, useEffect, useState } from 'react'
 
+export type AuthState = 'loading' | 'authenticated' | 'unauthenticated' | 'no-organization'
+
+export interface AuthGuardResult {
+  authState: AuthState
+  user: any
+  profile: any
+  loading: boolean
+  isAuthenticated: boolean
+  needsAuth: boolean
+  needsOrganization: boolean
+  error: string | null
+}
+
+/**
+ * Simplified authentication guard hook
+ * Provides consistent authentication state across all components
+ */
+export function useAuthGuard(): AuthGuardResult {
+  const { user, profile, loading, initialized, error } = useAuth()
+  const [timeoutReached, setTimeoutReached] = useState(false)
+
+  // Add timeout to prevent infinite loading
   useEffect(() => {
-    // Only evaluate auth state after initialization
+    if (initialized && user && !profile && !error) {
+      console.log('🔐 [AuthGuard] Starting profile load timeout (10s)')
+      const timeout = setTimeout(() => {
+        console.warn('🔐 [AuthGuard] Profile load timeout reached')
+        setTimeoutReached(true)
+      }, 10000) // 10 second timeout
+
+      return () => clearTimeout(timeout)
+    } else {
+      setTimeoutReached(false)
+    }
+  }, [initialized, user, profile, error])
+
+  const authState: AuthState = useMemo(() => {
+    // Still initializing or loading
     if (!initialized || loading) {
-      setAuthState('loading')
-      return
+      console.log('🔐 [AuthGuard] State: loading (initialized:', initialized, 'loading:', loading, ')')
+      return 'loading'
     }
 
     // No user = not authenticated
     if (!user) {
-      setAuthState('unauthenticated')
-      return
+      console.log('🔐 [AuthGuard] State: unauthenticated (no user)')
+      return 'unauthenticated'
     }
 
     // User but no profile = still loading or error
     if (!profile) {
-      // Give it a moment for profile to load, but don't wait forever
-      const timeout = setTimeout(() => {
-        setAuthState('unauthenticated') // Treat as auth failure if profile doesn't load
-      }, 15000) // Increased from 5s to 15s
-
-      return () => clearTimeout(timeout)
+      if (timeoutReached) {
+        console.error('🔐 [AuthGuard] State: unauthenticated (profile timeout)')
+        return 'unauthenticated'
+      }
+      console.log('🔐 [AuthGuard] State: loading (waiting for profile)')
+      return 'loading'
     }
 
     // User and profile but no organization = setup incomplete
-    if (!profile.organization?.id) {
-      setAuthState('no-org')
-      return
+    if (!profile.organization_id) {
+      console.log('🔐 [AuthGuard] State: no-organization')
+      return 'no-organization'
     }
 
     // All good!
-    setAuthState('authenticated')
-  }, [user, profile, initialized, loading])
+    console.log('🔐 [AuthGuard] State: authenticated')
+    return 'authenticated'
+  }, [user, profile, loading, initialized, timeoutReached])
 
   return {
     authState,
@@ -45,6 +80,7 @@ export function useAuthGuard() {
     loading: authState === 'loading',
     isAuthenticated: authState === 'authenticated',
     needsAuth: authState === 'unauthenticated',
-    needsOrg: authState === 'no-org'
+    needsOrganization: authState === 'no-organization',
+    error: timeoutReached ? 'Profile loading timeout - please refresh the page' : error
   }
 }

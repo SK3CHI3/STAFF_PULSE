@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
+  // Configure for Netlify deployment
+  images: {
+    unoptimized: true,
+  },
 };
 
 export default nextConfig;

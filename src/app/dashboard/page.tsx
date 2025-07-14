@@ -17,7 +17,7 @@ function Dashboard() {
 
 
   const [loading, setLoading] = useState(false)
-  const [timeRange, setTimeRange] = useState('30d')
+  const [timeRange, setTimeRange] = useState('7d')
   const [showCheckinModal, setShowCheckinModal] = useState(false)
   const [selectedDept, setSelectedDept] = useState('All Departments')
   const [sendType, setSendType] = useState<'now' | 'schedule'>('now')
@@ -199,7 +199,7 @@ function Dashboard() {
         `)
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(3);
 
       if (error) throw error;
       setRecentResponses(data || []);

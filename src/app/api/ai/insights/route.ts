@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { parsePaginationParams, calculatePagination, createPaginationResponse } from '@/lib/utils'
 
 // Type definitions for the API
 interface Employee {
@@ -288,19 +289,40 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const organizationId = searchParams.get('organizationId')
     const department = searchParams.get('department')
-    const limit = parseInt(searchParams.get('limit') || '20')
 
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
     }
 
-    // Get existing insights from database
+    // Parse pagination parameters
+    const { page, limit } = parsePaginationParams(searchParams)
+    const { offset } = calculatePagination(page, limit)
+
+    // Build count query
+    let countQuery = supabaseAdmin
+      .from('ai_insights')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', organizationId)
+
+    if (department) {
+      countQuery = countQuery.eq('department', department)
+    }
+
+    // Get total count
+    const { count: totalItems, error: countError } = await countQuery
+
+    if (countError) {
+      console.error('Error counting insights:', countError)
+      return NextResponse.json({ error: 'Failed to count insights' }, { status: 500 })
+    }
+
+    // Build main query with pagination
     let query = supabaseAdmin
       .from('ai_insights')
       .select('*')
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: false })
-      .limit(limit)
+      .range(offset, offset + limit - 1)
 
     if (department) {
       query = query.eq('department', department)
@@ -313,9 +335,18 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch insights' }, { status: 500 })
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      insights: existingInsights || []
+    // Create paginated response
+    const paginatedResponse = createPaginationResponse(
+      existingInsights || [],
+      totalItems || 0,
+      page,
+      limit
+    )
+
+    return NextResponse.json({
+      success: true,
+      insights: paginatedResponse.data,
+      pagination: paginatedResponse.pagination
     })
 
   } catch (error) {

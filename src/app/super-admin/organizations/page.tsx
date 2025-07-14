@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRouter } from 'next/navigation'
 import { Building2, Users, Mail, Phone, MapPin, Edit, Trash2, Plus, RefreshCw, CheckCircle2, XCircle, ArrowDown, ArrowUp } from 'lucide-react'
+import Pagination, { usePagination } from '@/components/Pagination'
 
 interface Organization {
   id: string
@@ -23,35 +24,62 @@ interface Organization {
 
 export default function OrganizationsManagement() {
   const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [filteredOrgs, setFilteredOrgs] = useState<Organization[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingOrg, setEditingOrg] = useState<Organization | null>(null)
   const [dataLoading, setDataLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 10
+  })
+
+  // Pagination hook
+  const {
+    currentPage,
+    itemsPerPage,
+    handlePageChange,
+    resetPagination
+  } = usePagination()
+
   const { profile, loading } = useAuth()
   const router = useRouter()
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    resetPagination()
+  }, [searchTerm, statusFilter, resetPagination])
 
   useEffect(() => {
     if (profile?.role === 'super_admin') {
       fetchOrganizations()
     }
-  }, [profile])
-
-  useEffect(() => {
-    filterOrganizations()
-  }, [organizations, searchTerm, statusFilter])
+  }, [profile?.role, currentPage, itemsPerPage, searchTerm, statusFilter])
 
   const fetchOrganizations = async () => {
     try {
       setDataLoading(true)
       setError(null)
-      const res = await fetch('/api/super-admin/organizations')
+      let url = `/api/super-admin/organizations?page=${currentPage}&limit=${itemsPerPage}`
+      if (searchTerm) {
+        url += `&search=${encodeURIComponent(searchTerm)}`
+      }
+      if (statusFilter !== 'all') {
+        url += `&status=${encodeURIComponent(statusFilter)}`
+      }
+
+      const res = await fetch(url)
       const result = await res.json()
       if (!result.success) throw new Error(result.error || 'Failed to fetch organizations')
       setOrganizations(result.organizations || [])
+
+      // Update pagination state
+      if (result.pagination) {
+        setPagination(result.pagination)
+      }
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -59,22 +87,7 @@ export default function OrganizationsManagement() {
     }
   }
 
-  const filterOrganizations = () => {
-    let filtered = organizations
 
-    if (searchTerm) {
-      filtered = filtered.filter(org =>
-        org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        org.email.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(org => org.subscription_status === statusFilter)
-    }
-
-    setFilteredOrgs(filtered)
-  }
 
   const updateOrganizationStatus = async (orgId: string, status: string) => {
     try {
@@ -253,7 +266,7 @@ export default function OrganizationsManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filteredOrgs.length === 0 ? (
+                {organizations.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-12">
                       <div className="text-gray-500">
@@ -266,7 +279,7 @@ export default function OrganizationsManagement() {
                     </td>
                   </tr>
                 ) : (
-                  filteredOrgs.map((org) => (
+                  organizations.map((org) => (
                     <tr key={org.id} className="border-b border-white/10 hover:bg-white/20 transition-colors">
                       <td className="py-4 px-6">
                         <div>
@@ -339,6 +352,16 @@ export default function OrganizationsManagement() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            itemsPerPage={pagination.itemsPerPage}
+            onPageChange={handlePageChange}
+            loading={dataLoading}
+          />
         </div>
       </main>
 

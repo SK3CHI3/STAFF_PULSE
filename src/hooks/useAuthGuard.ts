@@ -27,11 +27,11 @@ export function useAuthGuard(): AuthGuardResult {
   // Add timeout to prevent infinite loading
   useEffect(() => {
     if (initialized && user && !profile && !error) {
-      console.log('🔐 [AuthGuard] Starting profile load timeout (10s)')
+      console.log('🔐 [AuthGuard] Starting profile load timeout (5s)')
       const timeout = setTimeout(() => {
-        console.warn('🔐 [AuthGuard] Profile load timeout reached')
+        console.warn('🔐 [AuthGuard] Profile load timeout reached - this may indicate a network or database issue')
         setTimeoutReached(true)
-      }, 10000) // 10 second timeout
+      }, 5000) // Reduced to 5 second timeout
 
       return () => clearTimeout(timeout)
     } else {

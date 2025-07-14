@@ -13,7 +13,6 @@ const nextConfig: NextConfig = {
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
   },
-
   // Netlify-optimized configuration
   images: {
     // Let Netlify Image CDN handle optimization
@@ -24,9 +23,21 @@ const nextConfig: NextConfig = {
   // Enable trailing slashes for better Netlify compatibility
   trailingSlash: false,
 
+  // Ensure proper hydration and client-side routing
+  reactStrictMode: true,
+
   // Headers for better performance and security
   async headers() {
     return [
+      {
+        source: '/_next/static/(.*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
       {
         source: '/(.*)',
         headers: [
@@ -37,6 +48,18 @@ const nextConfig: NextConfig = {
           {
             key: 'Strict-Transport-Security',
             value: 'max-age=63072000; includeSubDomains; preload'
+          },
+          {
+            key: 'Cache-Control',
+            value: 'no-cache, no-store, must-revalidate',
+          },
+          {
+            key: 'Pragma',
+            value: 'no-cache',
+          },
+          {
+            key: 'Expires',
+            value: '0',
           },
         ],
       },
@@ -62,6 +85,7 @@ const nextConfig: NextConfig = {
         permanent: true,
       },
     ];
+  },
   },
 };
 

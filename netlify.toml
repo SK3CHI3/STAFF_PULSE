@@ -40,6 +40,13 @@
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
+# Handle client-side routing - this is CRITICAL for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/"
+  status = 200
+  force = false
+
 # Environment variables that need to be set in Netlify UI:
 #
 # Supabase Configuration:

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
+import { parsePaginationParams, calculatePagination, createPaginationResponse } from '@/lib/utils'
 
 // Get employees for an organization
 export async function GET(request: NextRequest) {
@@ -13,6 +14,34 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
     }
 
+    // Parse pagination parameters
+    const { page, limit } = parsePaginationParams(searchParams)
+    const { offset } = calculatePagination(page, limit)
+
+    // Build base query for counting total items
+    let countQuery = supabaseAdmin
+      .from('employees')
+      .select('*', { count: 'exact', head: true })
+      .eq('organization_id', organizationId)
+
+    // Apply filters to count query
+    if (department && department !== 'all') {
+      countQuery = countQuery.eq('department', department)
+    }
+
+    if (status && status !== 'all') {
+      countQuery = countQuery.eq('is_active', status === 'active')
+    }
+
+    // Get total count
+    const { count: totalItems, error: countError } = await countQuery
+
+    if (countError) {
+      console.error('Error counting employees:', countError)
+      return NextResponse.json({ error: 'Failed to count employees' }, { status: 500 })
+    }
+
+    // Build main query with pagination
     let query = supabaseAdmin
       .from('employees')
       .select(`
@@ -23,8 +52,9 @@ export async function GET(request: NextRequest) {
       `)
       .eq('organization_id', organizationId)
       .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
 
-    // Apply filters
+    // Apply filters to main query
     if (department && department !== 'all') {
       query = query.eq('department', department)
     }
@@ -43,11 +73,11 @@ export async function GET(request: NextRequest) {
     // Process employees with mood statistics
     const processedEmployees = employees?.map(emp => {
       const moods = emp.mood_checkins || []
-      const avgMood = moods.length > 0 
-        ? moods.reduce((sum: number, m: any) => sum + (m.mood_score || 0), 0) / moods.length 
+      const avgMood = moods.length > 0
+        ? moods.reduce((sum: number, m: any) => sum + (m.mood_score || 0), 0) / moods.length
         : null
-      
-      const lastResponse = moods.length > 0 
+
+      const lastResponse = moods.length > 0
         ? new Date(moods[0].created_at).toLocaleDateString()
         : null
 
@@ -60,9 +90,18 @@ export async function GET(request: NextRequest) {
       }
     }) || []
 
-    return NextResponse.json({ 
-      success: true, 
-      employees: processedEmployees 
+    // Create paginated response
+    const paginatedResponse = createPaginationResponse(
+      processedEmployees,
+      totalItems || 0,
+      page,
+      limit
+    )
+
+    return NextResponse.json({
+      success: true,
+      employees: paginatedResponse.data,
+      pagination: paginatedResponse.pagination
     })
 
   } catch (error) {

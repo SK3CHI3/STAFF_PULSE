@@ -80,17 +80,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState(prev => ({ ...prev, error: null }))
   }, [])
 
-  // Fetch user profile
+  // Fetch user profile with timeout
   const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     try {
       console.log('🔐 [AuthProvider] Fetching profile for user:', userId)
 
+      // Add timeout to prevent hanging
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
+      })
+
       // Fetch the profile data with a simpler approach
-      const { data: profileData, error: profileError } = await supabase
+      const profilePromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
+
+      const { data: profileData, error: profileError } = await Promise.race([
+        profilePromise,
+        timeoutPromise
+      ])
 
       if (profileError) {
         console.error('🔐 [AuthProvider] Profile fetch error:', {
@@ -405,7 +415,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ...prev,
             user: null,
             profile: null,
-            error: null
+            error: null,
+            loading: false,
+            initialized: true
           }))
         }
       }

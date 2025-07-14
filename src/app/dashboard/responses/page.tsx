@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState } from '@/components/LoadingState'
+import Pagination, { usePagination } from '@/components/Pagination'
 
 export default function Responses() {
   // ALL HOOKS MUST BE DECLARED FIRST - NO CONDITIONAL RETURNS BEFORE THIS
@@ -14,43 +15,41 @@ export default function Responses() {
   const [filterMood, setFilterMood] = useState('all')
   const [filterAnonymous, setFilterAnonymous] = useState('all')
   const [hasHydrated, setHasHydrated] = useState(false)
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 10
+  })
+
+  // Pagination hook
+  const {
+    currentPage,
+    itemsPerPage,
+    handlePageChange,
+    resetPagination
+  } = usePagination()
 
   // FUNCTION DEFINITIONS FIRST
-  // Fetch employees and aggregate mood check-ins
+  // Fetch responses with pagination
   const fetchResponses = async () => {
       if (!profile?.organization?.id) return
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/employees?organizationId=${profile.organization.id}`)
-        const result = await res.json()
-        if (!result.success) throw new Error(result.error || 'Failed to fetch employees')
-        const employees = result.employees || []
-        // Aggregate all mood check-ins
-        const allResponses: any[] = []
-        employees.forEach((emp: any) => {
-          if (Array.isArray(emp.mood_checkins)) {
-            emp.mood_checkins.forEach((m: any) => {
-              // Check if organization allows anonymous responses and if this response is anonymous
-              const orgAllowsAnonymous = emp.organization?.anonymous_allowed ?? true;
-              const isAnonymousResponse = m.is_anonymous && orgAllowsAnonymous;
+        let url = `/api/responses?organizationId=${profile.organization.id}&page=${currentPage}&limit=${itemsPerPage}`
+        url += `&filterPeriod=${filterPeriod}&filterMood=${filterMood}&filterAnonymous=${filterAnonymous}`
 
-              allResponses.push({
-                id: m.id || `${emp.id}_${m.created_at}`,
-                employee: `${emp.first_name} ${emp.last_name}`,
-                department: emp.department || 'Unassigned',
-                mood: m.mood_score,
-                comment: m.response_text || '',
-                timestamp: m.created_at,
-                anonymous: isAnonymousResponse,
-                orgAllowsAnonymous: orgAllowsAnonymous
-              })
-            })
-          }
-        })
-        // Sort by timestamp desc
-        allResponses.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        setResponses(allResponses)
+        const res = await fetch(url)
+        const result = await res.json()
+        if (!result.success) throw new Error(result.error || 'Failed to fetch responses')
+
+        setResponses(result.responses || [])
+
+        // Update pagination state
+        if (result.pagination) {
+          setPagination(result.pagination)
+        }
       } catch (err: any) {
         setError(err.message || 'Failed to fetch responses')
       } finally {
@@ -61,43 +60,27 @@ export default function Responses() {
   // ALL useEffect HOOKS MUST BE DECLARED HERE
   useEffect(() => { setHasHydrated(true) }, [])
 
-  // Load responses data when profile is available
+  // Reset pagination when filters change
+  useEffect(() => {
+    resetPagination()
+  }, [filterPeriod, filterMood, filterAnonymous, resetPagination])
+
+  // Load responses data when profile, pagination, or filters change
   useEffect(() => {
     if (profile?.organization?.id) {
       fetchResponses()
     }
-  }, [profile?.organization?.id])
+  }, [profile?.organization?.id, currentPage, itemsPerPage, filterPeriod, filterMood, filterAnonymous])
 
   // Memoize formatted responses - MUST BE WITH OTHER HOOKS
   const formattedResponses = useMemo(() => {
-    // Filtering logic
-    const now = new Date()
-    let days = 7
-    if (filterPeriod === '30d') days = 30
-    else if (filterPeriod === '90d') days = 90
-    const since = new Date(now)
-    since.setDate(now.getDate() - days)
-
-    return responses
-      .filter(r => {
-        const responseDate = new Date(r.timestamp)
-        const withinPeriod = responseDate >= since
-        const matchesMood = filterMood === 'all' ||
-          (filterMood === 'positive' && r.mood >= 4) ||
-          (filterMood === 'neutral' && r.mood === 3) ||
-          (filterMood === 'negative' && r.mood <= 2)
-        const matchesAnonymous = filterAnonymous === 'all' ||
-          (filterAnonymous === 'anonymous' && r.anonymous) ||
-          (filterAnonymous === 'identified' && !r.anonymous)
-        return withinPeriod && matchesMood && matchesAnonymous
-      })
-      .map(r => ({
-        ...r,
-        formattedTimestamp: r.timestamp
-          ? (hasHydrated ? new Date(r.timestamp).toLocaleString() : new Date(r.timestamp).toISOString().replace('T',' ').slice(0,16))
-          : ''
-      }))
-  }, [responses, filterPeriod, filterMood, filterAnonymous, hasHydrated])
+    return responses.map(r => ({
+      ...r,
+      formattedTimestamp: r.timestamp
+        ? (hasHydrated ? new Date(r.timestamp).toLocaleString() : new Date(r.timestamp).toISOString().replace('T',' ').slice(0,16))
+        : ''
+    }))
+  }, [responses, hasHydrated])
 
   // Authentication is handled by dashboard layout AuthGuard
   if (!profile?.organization_id) {
@@ -213,7 +196,7 @@ export default function Responses() {
         {/* Response Cards */}
         {!loading && !error && (
           <div className="space-y-4">
-            {filteredResponses.map((response) => (
+            {formattedResponses.map((response) => (
             <div key={response.id} className="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center gap-3 mb-3">
                 <div className="flex items-center gap-2">
@@ -254,8 +237,22 @@ export default function Responses() {
           </div>
         )}
 
+        {/* Pagination */}
+        {!loading && !error && formattedResponses.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
+            <Pagination
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              totalItems={pagination.totalItems}
+              itemsPerPage={pagination.itemsPerPage}
+              onPageChange={handlePageChange}
+              loading={loading}
+            />
+          </div>
+        )}
+
         {/* Empty State */}
-        {!loading && !error && filteredResponses.length === 0 && (
+        {!loading && !error && formattedResponses.length === 0 && (
           <div className="bg-white p-12 rounded-2xl shadow-sm border border-gray-100 text-center">
             <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />

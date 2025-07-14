@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import { Building2, Users, MessageSquare, ActivitySquare, BarChart2, TrendingUp, DollarSign, ArrowDown } from 'lucide-react'
 import React from 'react'
+import Pagination, { usePagination } from '@/components/Pagination'
 
 interface PlatformStats {
   totalOrganizations: number
@@ -64,7 +65,20 @@ export default function SuperAdminDashboard() {
   const [dataLoading, setDataLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedTimeframe, setSelectedTimeframe] = useState('7d')
-  
+  const [orgPagination, setOrgPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 10
+  })
+
+  // Pagination hook for organizations table
+  const {
+    currentPage: orgCurrentPage,
+    itemsPerPage: orgItemsPerPage,
+    handlePageChange: handleOrgPageChange
+  } = usePagination()
+
   const { user, profile, loading } = useAuth()
 
   useEffect(() => {
@@ -73,6 +87,13 @@ export default function SuperAdminDashboard() {
     }
   }, [profile, selectedTimeframe])
 
+  // Separate useEffect for organizations pagination
+  useEffect(() => {
+    if (profile?.role === 'super_admin') {
+      fetchOrganizations()
+    }
+  }, [profile?.role, orgCurrentPage, orgItemsPerPage])
+
   const fetchPlatformData = async () => {
     try {
       setDataLoading(true)
@@ -80,7 +101,6 @@ export default function SuperAdminDashboard() {
       // Fetch all platform statistics
       await Promise.all([
         fetchPlatformStats(),
-        fetchOrganizations(),
         fetchMonthlyTrends(),
         fetchMoodTrends(),
         fetchSubscriptionBreakdown(),
@@ -156,45 +176,36 @@ export default function SuperAdminDashboard() {
   }
 
   const fetchOrganizations = async () => {
-    const { data, error } = await supabase
-      .from('organizations')
-      .select(`
-        id, name, subscription_status, created_at,
-        employees(count),
-        mood_checkins(mood_score, created_at),
-        profiles(count)
-      `)
-      .order('created_at', { ascending: false })
+    try {
+      const res = await fetch(`/api/super-admin/organizations?page=${orgCurrentPage}&limit=${orgItemsPerPage}`)
+      const result = await res.json()
 
-    if (error) throw error
+      if (!result.success) throw new Error(result.error || 'Failed to fetch organizations')
 
-    const processedOrgs: OrganizationData[] = data?.map(org => {
-      const empCount = org.employees?.[0]?.count || 0
-      const responses = org.mood_checkins || []
-      const responseCount = responses.length
-      
-      const avgMood = responses.length > 0 
-        ? responses.reduce((sum, r) => sum + (r.mood_score || 0), 0) / responses.length
-        : 0
-
-      const responseRate = empCount > 0 ? (responseCount / empCount) * 100 : 0
-
-      return {
+      const processedOrgs: OrganizationData[] = result.organizations?.map((org: any) => ({
         id: org.id,
         name: org.name,
-        employees: empCount,
-        responses: responseCount,
-        avgMood: Number(avgMood.toFixed(1)),
-        responseRate: Math.round(responseRate),
+        employees: org.employees_count || 0,
+        responses: org.responses_count || 0,
+        avgMood: 0, // Will be calculated from mood_checkins if needed
+        responseRate: org.employees_count > 0 ? Math.round((org.responses_count / org.employees_count) * 100) : 0,
         subscription: org.subscription_status || 'trial',
-        revenue: empCount * 5, // Mock: $5 per employee per month
-        lastActivity: responses.length > 0 ? responses[0].created_at : org.created_at,
-        status: org.subscription_status === 'active' ? 'active' : 
+        revenue: (org.employees_count || 0) * 5, // Mock: $5 per employee per month
+        lastActivity: org.last_activity || org.created_at,
+        status: org.subscription_status === 'active' ? 'active' :
                 org.subscription_status === 'inactive' ? 'inactive' : 'trial'
-      }
-    }) || []
+      })) || []
 
-    setOrganizations(processedOrgs)
+      setOrganizations(processedOrgs)
+
+      // Update pagination state
+      if (result.pagination) {
+        setOrgPagination(result.pagination)
+      }
+    } catch (error) {
+      console.error('Error fetching organizations:', error)
+      setOrganizations([])
+    }
   }
 
   const fetchMonthlyTrends = async () => {
@@ -650,6 +661,16 @@ export default function SuperAdminDashboard() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination for Organizations Table */}
+        <Pagination
+          currentPage={orgPagination.currentPage}
+          totalPages={orgPagination.totalPages}
+          totalItems={orgPagination.totalItems}
+          itemsPerPage={orgPagination.itemsPerPage}
+          onPageChange={handleOrgPageChange}
+          loading={dataLoading}
+        />
       </div>
     </div>
   )

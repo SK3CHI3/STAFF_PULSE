@@ -5,11 +5,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
 import { useRouter } from 'next/navigation'
 // Remove this import - signOut is available from useAuth hook
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import ReactDatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { setHours, setMinutes } from 'date-fns';
+import { PlanStatus } from '@/components/PlanStatus';
 
 function Dashboard() {
   const { profile, signOut } = useAuth()
@@ -17,7 +18,7 @@ function Dashboard() {
 
 
   const [loading, setLoading] = useState(false)
-  const [timeRange, setTimeRange] = useState('30d')
+  const [timeRange, setTimeRange] = useState('7d')
   const [showCheckinModal, setShowCheckinModal] = useState(false)
   const [selectedDept, setSelectedDept] = useState('All Departments')
   const [sendType, setSendType] = useState<'now' | 'schedule'>('now')
@@ -199,7 +200,7 @@ function Dashboard() {
         `)
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(3);
 
       if (error) throw error;
       setRecentResponses(data || []);
@@ -765,6 +766,13 @@ function Dashboard() {
           </div>
         </div>
 
+        {/* Plan Status */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="lg:col-span-1">
+            <PlanStatus />
+          </div>
+        </div>
+
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Mood Trends Chart (Redesigned) */}
@@ -831,8 +839,7 @@ function Dashboard() {
                   <XAxis dataKey="day" tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
                   <YAxis domain={[1, 5]} tickCount={5} tick={{ fill: '#6B7280', fontSize: 13 }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: 'white', borderRadius: 12, border: '1px solid #E5E7EB' }} labelStyle={{ color: '#111827' }} formatter={(value) => typeof value === 'number' ? value.toFixed(2) : value} />
-                  <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ color: '#3BB273', fontWeight: 500, fontSize: 14 }} />
-                  <Area type="monotone" dataKey="mood" name="Average Mood" stroke="#3BB273" fillOpacity={1} fill="url(#colorMood)" dot={{ r: 5, fill: '#3BB273', stroke: '#fff', strokeWidth: 2 }} />
+                  <Area type="monotone" dataKey="mood" name="" stroke="#3BB273" fillOpacity={1} fill="url(#colorMood)" dot={{ r: 5, fill: '#3BB273', stroke: '#fff', strokeWidth: 2 }} />
                 </AreaChart>
               </ResponsiveContainer>
               )}

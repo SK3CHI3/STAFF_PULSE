@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseAdmin } from '@/lib/supabase'
+import { parsePaginationParams, calculatePagination, createPaginationResponse } from '@/lib/utils'
 
 // Get all organizations for super admin
 export async function GET(request: NextRequest) {
@@ -7,10 +8,36 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
     const status = searchParams.get('status')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const offset = parseInt(searchParams.get('offset') || '0')
+
+    // Parse pagination parameters
+    const { page, limit } = parsePaginationParams(searchParams)
+    const { offset } = calculatePagination(page, limit)
 
     const supabaseAdmin = createSupabaseAdmin()
+
+    // Build count query
+    let countQuery = supabaseAdmin
+      .from('organizations')
+      .select('*', { count: 'exact', head: true })
+
+    // Apply filters to count query
+    if (search) {
+      countQuery = countQuery.or(`name.ilike.%${search}%, email.ilike.%${search}%`)
+    }
+
+    if (status && status !== 'all') {
+      countQuery = countQuery.eq('subscription_status', status)
+    }
+
+    // Get total count
+    const { count: totalItems, error: countError } = await countQuery
+
+    if (countError) {
+      console.error('Error counting organizations:', countError)
+      return NextResponse.json({ error: 'Failed to count organizations' }, { status: 500 })
+    }
+
+    // Build main query with pagination
     let query = supabaseAdmin
       .from('organizations')
       .select(`
@@ -22,7 +49,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
 
-    // Apply filters
+    // Apply filters to main query
     if (search) {
       query = query.or(`name.ilike.%${search}%, email.ilike.%${search}%`)
     }
@@ -60,9 +87,18 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    return NextResponse.json({ 
-      success: true, 
-      organizations: processedOrgs 
+    // Create paginated response
+    const paginatedResponse = createPaginationResponse(
+      processedOrgs,
+      totalItems || 0,
+      page,
+      limit
+    )
+
+    return NextResponse.json({
+      success: true,
+      organizations: paginatedResponse.data,
+      pagination: paginatedResponse.pagination
     })
 
   } catch (error) {

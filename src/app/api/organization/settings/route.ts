@@ -31,12 +31,33 @@ export async function PUT(request: NextRequest) {
     if (!organizationId) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 })
     }
-    // Only allow updating specific fields
+    // Only allow updating specific fields (sensitive fields are restricted)
     const allowedFields = [
-      'name', 'check_in_frequency', 'working_hours', 'timezone', 'anonymous_allowed',
-      'reminder_enabled', 'alert_threshold', 'email', 'phone', 'address', 'billing_email',
-      'subscription_plan'
+      'check_in_frequency', 'working_hours', 'timezone', 'anonymous_allowed',
+      'reminder_enabled', 'alert_threshold', 'email', 'phone', 'address', 'billing_email'
     ]
+
+    // Restricted fields that cannot be updated via this endpoint
+    const restrictedFields = [
+      'name',                    // Company name - contact support to change
+      'subscription_plan',       // Subscription plan - managed through billing
+      'subscription_status',     // Subscription status - managed by system
+      'subscription_start_date', // Subscription dates - managed by system
+      'subscription_end_date',   // Subscription dates - managed by system
+      'monthly_price',          // Pricing - managed by system
+      'employee_count',         // Employee count - calculated automatically
+      'created_at',             // Creation date - immutable
+      'updated_at'              // Update date - managed by system
+    ]
+
+    // Check if any restricted fields are being attempted to update
+    for (const field of restrictedFields) {
+      if (updates[field] !== undefined) {
+        return NextResponse.json({
+          error: `Field '${field}' cannot be updated. Contact support for assistance.`
+        }, { status: 403 })
+      }
+    }
     const updateData: any = {}
     for (const key of allowedFields) {
       if (updates[key] !== undefined) updateData[key] = updates[key]

@@ -6,6 +6,9 @@ import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
 import ErrorAlert from '@/components/ui/ErrorAlert'
 import SuccessAlert from '@/components/ui/SuccessAlert'
+import Pagination, { usePagination } from '@/components/Pagination'
+import { EmployeeLimitGate } from '@/components/FeatureGate'
+import { useFeatureAccess } from '@/hooks/useFeatureAccess'
 
 interface Employee {
   id: string
@@ -32,6 +35,7 @@ export default function Employees() {
   // ALL HOOKS MUST BE DECLARED FIRST - NO CONDITIONAL RETURNS BEFORE THIS
   const router = useRouter()
   const { profile } = useAuth()
+  const { employeeCount, employeeLimit, overEmployeeLimit, plan } = useFeatureAccess()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedDepartment, setSelectedDepartment] = useState('all')
   const [selectedStatus, setSelectedStatus] = useState('all')
@@ -57,6 +61,20 @@ export default function Employees() {
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    itemsPerPage: 10
+  })
+
+  // Pagination hook
+  const {
+    currentPage,
+    itemsPerPage,
+    handlePageChange,
+    resetPagination
+  } = usePagination()
   const [hasHydrated, setHasHydrated] = useState(false)
   const [alertError, setAlertError] = useState<string | null>(null)
   const [alertSuccess, setAlertSuccess] = useState<string | null>(null)
@@ -241,7 +259,7 @@ export default function Employees() {
     setLoading(true);
     setError(null);
     try {
-      let url = `/api/employees?organizationId=${profile.organization.id}`;
+      let url = `/api/employees?organizationId=${profile.organization.id}&page=${currentPage}&limit=${itemsPerPage}`;
       if (selectedDepartment && selectedDepartment !== 'all') {
         url += `&department=${encodeURIComponent(selectedDepartment)}`;
       }
@@ -252,12 +270,17 @@ export default function Employees() {
       const result = await res.json();
       if (!result.success) throw new Error(result.error || 'Failed to fetch employees');
       setEmployees(result.employees || []);
+
+      // Update pagination state
+      if (result.pagination) {
+        setPagination(result.pagination);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch employees');
     } finally {
       setLoading(false);
     }
-  }, [profile?.organization?.id, selectedDepartment, selectedStatus]);
+  }, [profile?.organization?.id, selectedDepartment, selectedStatus, currentPage, itemsPerPage]);
 
   // Memoize formatted last_response for each employee
   const employeesWithFormattedDates = useMemo(() => {
@@ -269,8 +292,10 @@ export default function Employees() {
     }))
   }, [employees, hasHydrated])
 
-  // Filter employees - memoized for performance
+  // Filter employees by search term (client-side for current page)
   const filteredEmployees = useMemo(() => {
+    if (!searchTerm) return employeesWithFormattedDates;
+
     return employeesWithFormattedDates.filter(employee => {
       const matchesSearch =
         employee.first_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -278,14 +303,9 @@ export default function Employees() {
         employee.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         employee.department?.toLowerCase().includes(searchTerm.toLowerCase())
 
-      const matchesDepartment = selectedDepartment === 'all' || employee.department === selectedDepartment
-      const matchesStatus = selectedStatus === 'all' ||
-        (selectedStatus === 'active' && employee.is_active) ||
-        (selectedStatus === 'inactive' && !employee.is_active)
-
-      return matchesSearch && matchesDepartment && matchesStatus
+      return matchesSearch
     })
-  }, [employeesWithFormattedDates, searchTerm, selectedDepartment, selectedStatus])
+  }, [employeesWithFormattedDates, searchTerm])
 
   // ALL useEffect HOOKS
   useEffect(() => { setHasHydrated(true) }, [])
@@ -316,12 +336,17 @@ export default function Employees() {
     }
   }, [profile?.organization?.id, fetchDepartments]);
 
-  // Fetch employees when filters or profile change
+  // Reset pagination when filters change
+  useEffect(() => {
+    resetPagination();
+  }, [selectedDepartment, selectedStatus, resetPagination]);
+
+  // Fetch employees when filters, pagination, or profile change
   useEffect(() => {
     if (profile?.organization?.id) {
       fetchEmployees();
     }
-  }, [profile?.organization?.id, selectedDepartment, selectedStatus, fetchEmployees]);
+  }, [profile?.organization?.id, currentPage, itemsPerPage, selectedDepartment, selectedStatus, fetchEmployees]);
 
   // Authentication is handled by dashboard layout AuthGuard
   if (!profile?.organization_id) {
@@ -380,15 +405,26 @@ export default function Employees() {
             </div>
 
             <div className="flex items-center space-x-3">
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2 cursor-pointer"
+              <EmployeeLimitGate
+                fallback={
+                  <div className="bg-gray-100 text-gray-500 px-4 py-2 rounded-lg font-medium flex items-center space-x-2 cursor-not-allowed">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span>Employee Limit Reached ({employeeCount}/{employeeLimit})</span>
+                  </div>
+                }
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                <span>Add Employee</span>
-              </button>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2 cursor-pointer"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  <span>Add Employee</span>
+                </button>
+              </EmployeeLimitGate>
               <button
                 onClick={() => setShowImportModal(true)}
                 className="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center space-x-2"
@@ -490,7 +526,7 @@ export default function Employees() {
         {/* Employee List */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="text-lg font-semibold text-gray-900">Team Members ({filteredEmployees.length})</h2>
+            <h2 className="text-lg font-semibold text-gray-900">Team Members ({pagination.totalItems})</h2>
           </div>
           
           <div className="overflow-x-auto">
@@ -630,6 +666,16 @@ export default function Employees() {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination */}
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            itemsPerPage={pagination.itemsPerPage}
+            onPageChange={handlePageChange}
+            loading={loading}
+          />
         </div>
       </main>
 

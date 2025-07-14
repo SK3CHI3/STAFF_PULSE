@@ -5,6 +5,7 @@ import { AuthGuard } from '@/components/AuthGuard'
 import { useAuth } from '@/contexts/AuthContext'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
+import { useLoadingDebugger, usePageVisibilityDebugger, useNavigationDebugger } from '@/hooks/useLoadingDebugger'
 
 export default function DashboardLayout({
   children,
@@ -44,7 +45,16 @@ function DashboardLayoutContent({
       setIsPageLoading(false)
     }, 300)
 
-    return () => clearTimeout(timer)
+    // Safety timeout to prevent stuck loading states
+    const safetyTimer = setTimeout(() => {
+      console.warn('🚨 [Dashboard] Safety timeout: forcing loading state to false')
+      setIsPageLoading(false)
+    }, 2000)
+
+    return () => {
+      clearTimeout(timer)
+      clearTimeout(safetyTimer)
+    }
   }, [pathname])
 
   // Always render the sidebar with the same transform on SSR/CSR initial render

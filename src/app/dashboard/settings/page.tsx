@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { LoadingState, ErrorState } from '@/components/LoadingState'
+import { LoadingState } from '@/components/LoadingState'
 
 export default function Settings() {
   const { profile } = useAuth()
@@ -53,35 +52,37 @@ export default function Settings() {
     }
   }
 
-  // Map UI fields to API fields
+  // Map UI fields to API fields (excluding restricted fields)
   function mapUiToApi(ui: any) {
     return {
-      name: ui.companyName,
+      // Note: Restricted fields are intentionally excluded:
+      // - 'name' (company name) - contact support to change
+      // - subscription fields - managed through billing system
+      // - system-managed fields - calculated or set automatically
       check_in_frequency: ui.checkInFrequency,
       anonymous_allowed: ui.anonymousAllowed,
       reminder_enabled: ui.reminderEnabled,
       alert_threshold: ui.alertThreshold,
       working_hours: ui.workingHours,
       timezone: ui.timezone,
-      whatsapp_enabled: ui.whatsappEnabled,
-      email_enabled: ui.emailEnabled,
-      sms_enabled: ui.smsEnabled,
-      slack_webhook: ui.slackWebhook,
-      teams_webhook: ui.teamsWebhook,
-      discord_webhook: ui.discordWebhook,
-      two_factor_enabled: ui.twoFactorEnabled,
-      session_timeout: ui.sessionTimeout,
-      password_policy: ui.passwordPolicy,
-      audit_logging: ui.auditLogging,
-      data_retention: ui.dataRetention,
-      backup_frequency: ui.backupFrequency,
-      encryption_enabled: ui.encryptionEnabled,
-      address: ui.companyAddress,
-      website: ui.companyWebsite,
-      industry: ui.companyIndustry,
-      company_size: ui.companySize,
-      contact_email: ui.contactEmail,
+      email: ui.contactEmail,
       phone: ui.phone,
+      address: ui.companyAddress,
+      billing_email: ui.billingEmail,
+      // Note: Integration settings like webhooks would be handled separately
+      // whatsapp_enabled: ui.whatsappEnabled,
+      // email_enabled: ui.emailEnabled,
+      // sms_enabled: ui.smsEnabled,
+      // slack_webhook: ui.slackWebhook,
+      // teams_webhook: ui.teamsWebhook,
+      // discord_webhook: ui.discordWebhook,
+      // two_factor_enabled: ui.twoFactorEnabled,
+      // session_timeout: ui.sessionTimeout,
+      // password_policy: ui.passwordPolicy,
+      // audit_logging: ui.auditLogging,
+      // data_retention: ui.dataRetention,
+      // backup_frequency: ui.backupFrequency,
+      // encryption_enabled: ui.encryptionEnabled,
     }
   }
 
@@ -220,6 +221,22 @@ export default function Settings() {
           {/* Main Content */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+              {/* Information Banner */}
+              <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-start space-x-3">
+                  <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <div>
+                    <h3 className="font-medium text-blue-700">Settings Information</h3>
+                    <p className="text-sm text-blue-600 mt-1">
+                      Some settings like company name and subscription details are read-only for security.
+                      Contact support if you need to modify restricted fields.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {success && <div className="mb-4 text-green-600 font-medium">{success}</div>}
               {error && <div className="mb-4 text-red-600 font-medium">{error}</div>}
               {activeTab === 'general' && (
@@ -227,13 +244,27 @@ export default function Settings() {
                   <h2 className="text-lg font-semibold text-blue-700 mb-6">General Settings</h2>
                   <div className="space-y-6">
                     <div>
-                      <label className="block text-sm font-semibold text-blue-700 mb-2">Company Name</label>
-                      <input
-                        type="text"
-                        value={settings?.companyName || ''}
-                        onChange={(e) => updateSettings({ companyName: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 bg-white"
-                      />
+                      <label className="block text-sm font-semibold text-blue-700 mb-2">
+                        Company Name
+                        <span className="ml-2 text-xs text-gray-500 font-normal">(Read-only)</span>
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={settings?.companyName || ''}
+                          readOnly
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"
+                          title="Company name cannot be changed. Contact support if you need to update this."
+                        />
+                        <div className="absolute inset-y-0 right-0 flex items-center pr-3">
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-gray-500">
+                        To change your company name, please contact our support team.
+                      </p>
                     </div>
 
                     <div>
@@ -292,6 +323,50 @@ export default function Settings() {
                           }`}
                         />
                       </button>
+                    </div>
+
+                    {/* Subscription Information - Read Only */}
+                    <div className="mt-8 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <h3 className="text-sm font-semibold text-blue-700 mb-3">
+                        Subscription Information
+                        <span className="ml-2 text-xs text-gray-500 font-normal">(Read-only)</span>
+                      </h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-600">Plan:</span>
+                          <span className="ml-2 font-medium text-gray-900 capitalize">
+                            {profile?.organization?.subscription_plan || 'Free'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Status:</span>
+                          <span className={`ml-2 font-medium capitalize ${
+                            profile?.organization?.subscription_status === 'active'
+                              ? 'text-green-600'
+                              : 'text-yellow-600'
+                          }`}>
+                            {profile?.organization?.subscription_status || 'Active'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Employees:</span>
+                          <span className="ml-2 font-medium text-gray-900">
+                            {(profile?.organization as any)?.employee_count || 0}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Created:</span>
+                          <span className="ml-2 font-medium text-gray-900">
+                            {(profile?.organization as any)?.created_at
+                              ? new Date((profile.organization as any).created_at).toLocaleDateString()
+                              : 'N/A'
+                            }
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-3 text-xs text-gray-500">
+                        To modify subscription details, visit the <a href="/dashboard/billing" className="text-blue-600 hover:underline">billing page</a> or contact support.
+                      </p>
                     </div>
                   </div>
                 </div>

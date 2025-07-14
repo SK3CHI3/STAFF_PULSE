@@ -5,6 +5,13 @@
 [build.environment]
   NODE_VERSION = "18"
 
+# Handle client-side routing - this is CRITICAL for SPA routing
+[[redirects]]
+  from = "/*"
+  to = "/"
+  status = 200
+  force = false
+
 # Environment variables that need to be set in Netlify UI
 # NEXT_PUBLIC_SUPABASE_URL
 # NEXT_PUBLIC_SUPABASE_ANON_KEY

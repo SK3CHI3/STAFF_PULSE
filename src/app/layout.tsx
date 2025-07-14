@@ -7,6 +7,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
+  display: "swap", // Improves font loading performance
+  preload: true,   // Ensures proper preloading
 });
 
 export const metadata: Metadata = {

@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase'
 import ReactDatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { setHours, setMinutes } from 'date-fns';
-import { PlanStatus } from '@/components/PlanStatus';
+
 
 function Dashboard() {
   const { profile, signOut } = useAuth()
@@ -766,12 +766,7 @@ function Dashboard() {
           </div>
         </div>
 
-        {/* Plan Status */}
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-1">
-            <PlanStatus />
-          </div>
-        </div>
+
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

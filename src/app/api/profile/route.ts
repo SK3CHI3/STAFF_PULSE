@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createSupabaseServerClient } from '@/lib/supabase-server'
 
 export async function GET(request: NextRequest) {
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
     if (userError || !user) {
       console.log('❌ [API/Profile] Authentication failed')
-      return new Response(JSON.stringify({ error: 'Not authenticated' }), { status: 401 })
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     console.log('🔍 [API/Profile] Fetching profile for user:', user.id)
@@ -43,13 +43,13 @@ export async function GET(request: NextRequest) {
 
     if (profileError || !profile) {
       console.log('❌ [API/Profile] Profile not found')
-      return new Response(JSON.stringify({ error: 'Profile not found' }), { status: 404 })
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
     }
 
     console.log('✅ [API/Profile] Profile found successfully')
-    return new Response(JSON.stringify({ profile }), { status: 200 })
+    return NextResponse.json({ profile }, { status: 200 })
   } catch (error) {
     console.error('❌ [API/Profile] Unexpected error:', error)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

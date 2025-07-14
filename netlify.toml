@@ -3,7 +3,8 @@
 
 [build]
   command = "npm run build"
-  publish = ".next"
+  # Let Netlify auto-detect the publish directory for Next.js
+  # publish = ".next"
 
 [build.environment]
   # Use Node.js 18 LTS for compatibility
@@ -40,12 +41,12 @@
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
-# Handle client-side routing - this is CRITICAL for SPA routing
+# Handle client-side routing for Next.js App Router
+# API routes are automatically handled by Netlify's Next.js integration
 [[redirects]]
   from = "/*"
-  to = "/"
+  to = "/index.html"
   status = 200
-  force = false
 
 # Environment variables that need to be set in Netlify UI:
 #

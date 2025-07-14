@@ -1,8 +1,6 @@
 # Netlify redirects for Next.js App Router
 # Handle client-side routing - this is CRITICAL for SPA routing
 
-# API routes should be handled by Netlify Functions
-/api/* /.netlify/functions/:splat 200
-
 # All other routes should fallback to index.html for client-side routing
+# API routes are automatically handled by Netlify's Next.js integration
 /* /index.html 200

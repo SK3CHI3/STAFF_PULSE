@@ -16,11 +16,11 @@ interface AuthGuardProps {
  * Authentication guard component
  * Handles authentication checks and redirects consistently across the app
  */
-export function AuthGuard({ 
-  children, 
-  requireOrganization = true, 
+export function AuthGuard({
+  children,
+  requireOrganization = true,
   redirectTo = '/auth/login',
-  fallback 
+  fallback
 }: AuthGuardProps) {
   const { authState, needsAuth, needsOrganization, error } = useAuthGuard()
   const router = useRouter()

@@ -19,8 +19,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 console.log('🔗 [Supabase] Initializing client with URL:', supabaseUrl)
 console.log('🔗 [Supabase] Environment check passed')
 
-// Client-side Supabase client (for use in client components)
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Client-side Supabase client with simple session configuration
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: true
+  }
+})
 console.log('✅ [Supabase] Client initialized successfully')
 
 // Client component Supabase client (for auth helpers)
@@ -35,7 +40,14 @@ export const createSupabaseClient = () => {
       `NEXT_PUBLIC_SUPABASE_ANON_KEY: ${key ? 'SET' : 'MISSING'}`
     )
   }
-  return createClient(url, key)
+
+  // Use the same session configuration as the main client
+  return createClient(url, key, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true
+    }
+  })
 }
 
 // Admin client with service role key (for server-side operations only)

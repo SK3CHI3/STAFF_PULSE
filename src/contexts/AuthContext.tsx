@@ -80,67 +80,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setState(prev => ({ ...prev, error: null }))
   }, [])
 
-  // Fetch user profile with timeout
+  // Simple profile fetch with basic error handling
   const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
     try {
       console.log('🔐 [AuthProvider] Fetching profile for user:', userId)
 
-      // Add timeout to prevent hanging
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Profile fetch timeout')), 8000)
-      })
-
-      // Fetch the profile data with a simpler approach
-      const profilePromise = supabase
+      const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .single()
 
-      const { data: profileData, error: profileError } = await Promise.race([
-        profilePromise,
-        timeoutPromise
-      ])
-
       if (profileError) {
-        console.error('🔐 [AuthProvider] Profile fetch error:', {
-          message: profileError.message,
-          details: profileError.details,
-          hint: profileError.hint,
-          code: profileError.code
-        })
+        console.error('🔐 [AuthProvider] Profile fetch error:', profileError.message)
 
-        // If profile doesn't exist (PGRST116), try to create it
+        // If profile doesn't exist, just return null - let signup handle profile creation
         if (profileError.code === 'PGRST116') {
-          console.log('🔐 [AuthProvider] Profile not found, attempting to create...')
-          try {
-            // Get user email from auth
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user?.email) {
-              const { data: newProfile, error: createError } = await supabase
-                .from('profiles')
-                .insert({
-                  id: userId,
-                  email: user.email,
-                  first_name: user.user_metadata?.first_name || 'User',
-                  last_name: user.user_metadata?.last_name || 'Name',
-                  role: 'hr_admin'
-                })
-                .select()
-                .single()
-
-              if (createError) {
-                console.error('🔐 [AuthProvider] Failed to create profile:', createError)
-                return null
-              }
-
-              console.log('🔐 [AuthProvider] Profile created successfully')
-              // Continue with the newly created profile
-              return await fetchProfile(userId) // Recursive call to fetch the new profile
-            }
-          } catch (createException) {
-            console.error('🔐 [AuthProvider] Exception creating profile:', createException)
-          }
+          console.log('🔐 [AuthProvider] Profile not found')
         }
 
         return null
@@ -181,14 +137,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('🔐 [AuthProvider] Profile fetch completed successfully')
       return userProfile
     } catch (error) {
-      console.error('🔐 [AuthProvider] Profile fetch exception:', {
-        error,
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
-      })
+      // Simple error logging
+      console.error('🔐 [AuthProvider] Profile fetch exception:',
+        error instanceof Error ? error.message : 'Unknown error')
       return null
     }
   }, [])
+
+
 
   // Refresh profile function
   const refreshProfile = useCallback(async () => {
@@ -199,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     console.log('🔐 [AuthProvider] Refreshing profile...')
     const profile = await fetchProfile(state.user.id)
-    
+
     setState(prev => ({
       ...prev,
       profile,

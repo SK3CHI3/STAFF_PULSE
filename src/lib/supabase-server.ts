@@ -18,7 +18,12 @@ export const createSupabaseServerClient = async () => {
     url: supabaseUrl
   })
 
-  return createClient(supabaseUrl, supabaseAnonKey)
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true
+    }
+  })
 }
 
 // Admin client for server-side operations (same as in supabase.ts but isolated)

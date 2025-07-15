@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState } from '@/components/LoadingState'
 import Pagination, { usePagination } from '@/components/Pagination'
-import { AIInsightsGate } from '@/components/FeatureGate'
+import { AIInsightsDirectCheck } from '@/components/DirectPlanCheck'
 
 
 interface AIInsight {
@@ -332,7 +332,7 @@ export default function InsightsPage() {
 
       {/* Content */}
       <main className="p-4">
-        <AIInsightsGate>
+        <AIInsightsDirectCheck>
           {/* Show error only in insights section */}
           {error && (
             <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
@@ -461,7 +461,7 @@ export default function InsightsPage() {
             />
           </div>
         )}
-        </AIInsightsGate>
+        </AIInsightsDirectCheck>
       </main>
     </div>
   )

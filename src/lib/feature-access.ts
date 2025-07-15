@@ -65,10 +65,12 @@ export type FeatureName = keyof typeof PLAN_FEATURES.free
 export class FeatureAccess {
   // Check if organization has access to a specific feature
   static async hasFeatureAccess(
-    organizationId: string, 
+    organizationId: string,
     feature: FeatureName
   ): Promise<{ hasAccess: boolean; reason?: string; plan?: string }> {
     try {
+      console.log(`🔍 [FeatureAccess] Checking feature '${feature}' for org: ${organizationId}`)
+
       // Get organization subscription details
       const { data: org, error } = await supabaseAdmin
         .from('organizations')
@@ -77,25 +79,41 @@ export class FeatureAccess {
         .single()
 
       if (error || !org) {
+        console.log(`❌ [FeatureAccess] Organization not found: ${error?.message}`)
         return { hasAccess: false, reason: 'Organization not found' }
       }
+
+      console.log(`📊 [FeatureAccess] Org details:`, {
+        plan: org.subscription_plan,
+        status: org.subscription_status,
+        employeeCount: org.employee_count
+      })
 
       const plan = org.subscription_plan as PlanId || 'free'
       const planFeatures = PLAN_FEATURES[plan]
 
+      if (!planFeatures) {
+        console.log(`❌ [FeatureAccess] Unknown plan: ${plan}`)
+        return { hasAccess: false, reason: `Unknown plan: ${plan}`, plan }
+      }
+
+      console.log(`🎯 [FeatureAccess] Plan '${plan}' features:`, planFeatures)
+
       // Check if subscription is active
       if (org.subscription_status !== 'active') {
+        console.log(`⚠️ [FeatureAccess] Subscription not active: ${org.subscription_status}`)
         // Check if in grace period
         const now = new Date()
         const gracePeriodEnd = org.grace_period_end ? new Date(org.grace_period_end) : null
-        
+
         if (!gracePeriodEnd || now > gracePeriodEnd) {
           // Only allow basic features for inactive subscriptions
           if (!PLAN_FEATURES.free[feature]) {
-            return { 
-              hasAccess: false, 
+            console.log(`❌ [FeatureAccess] Feature '${feature}' not available - subscription inactive`)
+            return {
+              hasAccess: false,
               reason: 'Subscription inactive - upgrade required',
-              plan 
+              plan
             }
           }
         }
@@ -103,30 +121,36 @@ export class FeatureAccess {
 
       // Check if plan includes the feature
       const hasFeature = planFeatures[feature]
-      
+      console.log(`🔑 [FeatureAccess] Feature '${feature}' in plan '${plan}': ${hasFeature}`)
+
       if (typeof hasFeature === 'boolean') {
-        return { 
-          hasAccess: hasFeature, 
+        const result = {
+          hasAccess: hasFeature,
           reason: hasFeature ? undefined : `Feature not available in ${plan} plan`,
-          plan 
+          plan
         }
+        console.log(`✅ [FeatureAccess] Result:`, result)
+        return result
       }
 
       // For numeric features (like employee limits), check if within limits
       if (feature === 'employees') {
         const limit = planFeatures.employees
         const hasAccess = org.employee_count <= limit
-        return { 
-          hasAccess, 
+        const result = {
+          hasAccess,
           reason: hasAccess ? undefined : `Employee limit exceeded (${org.employee_count}/${limit})`,
-          plan 
+          plan
         }
+        console.log(`✅ [FeatureAccess] Employee limit check:`, result)
+        return result
       }
 
+      console.log(`✅ [FeatureAccess] Default access granted for feature: ${feature}`)
       return { hasAccess: true, plan }
 
     } catch (error) {
-      console.error('Error checking feature access:', error)
+      console.error('❌ [FeatureAccess] Error checking feature access:', error)
       return { hasAccess: false, reason: 'Error checking access' }
     }
   }

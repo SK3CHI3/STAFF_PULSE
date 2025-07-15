@@ -72,7 +72,7 @@ export interface Database {
           phone?: string
           industry?: string
           employee_count: number
-          subscription_plan: 'free' | 'starter' | 'team' | 'growth' | 'enterprise'
+          subscription_plan: 'free' | 'team' | 'enterprise'
           subscription_status: 'active' | 'inactive' | 'cancelled' | 'past_due'
           subscription_start_date?: string
           subscription_end_date?: string

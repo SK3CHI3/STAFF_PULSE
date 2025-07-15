@@ -44,16 +44,19 @@ export function useFeatureAccess() {
 
     try {
       setState(prev => ({ ...prev, loading: true, error: null }))
-      
+
+      console.log(`🌐 [useFeatureAccess] Fetching features for org: ${profile.organization.id}`)
       const response = await fetch(`/api/billing/features?organizationId=${profile.organization.id}`)
       const data = await response.json()
 
+      console.log(`🌐 [useFeatureAccess] API Response:`, JSON.stringify(data, null, 2))
+
       if (!response.ok) {
+        console.error(`❌ [useFeatureAccess] API Error:`, data)
         throw new Error(data.error || 'Failed to fetch feature access')
       }
 
-      setState(prev => ({
-        ...prev,
+      const newState = {
         loading: false,
         access: data.features || {},
         plan: data.plan || 'free',
@@ -61,7 +64,10 @@ export function useFeatureAccess() {
         employeeCount: data.employeeCount || 0,
         employeeLimit: data.employeeLimit || 4,
         overEmployeeLimit: data.overEmployeeLimit || false
-      }))
+      }
+
+      console.log(`✅ [useFeatureAccess] Setting state:`, JSON.stringify(newState, null, 2))
+      setState(prev => ({ ...prev, ...newState }))
 
     } catch (error) {
       console.error('Error fetching feature access:', error)
@@ -123,16 +129,24 @@ export function useFeatureAccess() {
 
 // Hook for checking specific feature
 export function useFeature(featureName: string) {
-  const { hasFeature, loading, error } = useFeatureAccess()
+  const { hasFeature, loading, error, access, plan } = useFeatureAccess()
   const [featureState, setFeatureState] = useState<FeatureAccessResult>({
     hasAccess: false
   })
 
   useEffect(() => {
     if (!loading) {
-      setFeatureState(hasFeature(featureName))
+      const result = hasFeature(featureName)
+      console.log(`🔍 [useFeature] Checking feature '${featureName}':`, JSON.stringify({
+        result,
+        plan,
+        allAccess: access,
+        loading,
+        error
+      }, null, 2))
+      setFeatureState(result)
     }
-  }, [featureName, hasFeature, loading])
+  }, [featureName, hasFeature, loading, access, plan, error])
 
   return {
     ...featureState,

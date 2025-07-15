@@ -130,13 +130,57 @@ function UpgradePrompt({ reason, plan, currentCount, limit, feature, action }: U
 // Specific feature gates for common features
 export function AIInsightsGate({ children, fallback }: { children: React.ReactNode; fallback?: React.ReactNode }) {
   return (
-    <FeatureGate 
-      feature="ai_insights" 
-      fallback={fallback}
-      upgradeMessage="AI insights are available in Professional and Enterprise plans."
+    <FeatureGate
+      feature="ai_insights"
+      fallback={fallback || <AIInsightsCenteredUpgrade />}
+      showUpgradePrompt={false} // Use custom fallback instead
     >
       {children}
     </FeatureGate>
+  )
+}
+
+// Centered upgrade card specifically for AI Insights page
+function AIInsightsCenteredUpgrade() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px] p-8">
+      <div className="max-w-md w-full">
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-8 text-center">
+          {/* Lock Icon */}
+          <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6">
+            <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+
+          {/* Title */}
+          <h3 className="text-xl font-semibold text-gray-900 mb-3">
+            Upgrade Required
+          </h3>
+
+          {/* Description */}
+          <p className="text-gray-600 mb-6 leading-relaxed">
+            AI insights are available in Professional and Enterprise plans.
+          </p>
+
+          {/* Action Buttons */}
+          <div className="space-y-3">
+            <Link
+              href="/dashboard/billing"
+              className="w-full inline-flex items-center justify-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            >
+              Upgrade Plan
+            </Link>
+            <Link
+              href="/dashboard/billing"
+              className="w-full inline-flex items-center justify-center px-6 py-3 border border-gray-300 text-base font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
+            >
+              View Plans
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
   )
 }
 

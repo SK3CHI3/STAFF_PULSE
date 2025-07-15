@@ -13,47 +13,29 @@ export interface SubscriptionPlan {
 export const SUBSCRIPTION_PLANS: Record<string, SubscriptionPlan> = {
   free: {
     id: 'free',
-    name: 'Free Plan',
+    name: 'Starter',
     price: 0,
     currency: 'KES',
-    employees: 10,
-    features: ['Basic mood tracking', 'Weekly reports', 'Email support'],
-    period: 'monthly'
-  },
-  starter: {
-    id: 'starter',
-    name: 'Starter',
-    price: 2500,
-    currency: 'KES',
-    employees: 50,
-    features: ['Advanced analytics', 'WhatsApp integration', 'Monthly reports', 'Priority support'],
+    employees: 4,
+    features: ['Basic dashboard', '2 check-ins per month', 'Email support'],
     period: 'monthly'
   },
   team: {
     id: 'team',
-    name: 'Team',
-    price: 5000,
+    name: 'Professional',
+    price: 800,
     currency: 'KES',
-    employees: 150,
-    features: ['Department insights', 'Custom surveys', 'API access', 'Dedicated support'],
-    period: 'monthly'
-  },
-  growth: {
-    id: 'growth',
-    name: 'Growth',
-    price: 10000,
-    currency: 'KES',
-    employees: 500,
-    features: ['AI insights', 'Custom integrations', 'Advanced reporting', 'Account manager'],
+    employees: 15,
+    features: ['Advanced analytics', 'Weekly check-ins', 'AI insights', 'Priority support'],
     period: 'monthly'
   },
   enterprise: {
     id: 'enterprise',
     name: 'Enterprise',
-    price: 25000,
+    price: 2000,
     currency: 'KES',
-    employees: 999999,
-    features: ['Unlimited employees', 'Custom features', 'On-premise option', 'SLA guarantee'],
+    employees: 50,
+    features: ['All features', 'Custom integrations', 'Dedicated support', 'Advanced security'],
     period: 'monthly'
   }
 }

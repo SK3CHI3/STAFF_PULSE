@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase-server'
 import crypto from 'crypto'
 
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
+
 // Verify IntaSend webhook signature
 function verifyIntaSendSignature(payload: string, signature: string): boolean {
   const secretKey = process.env.INTASEND_SECRET_KEY

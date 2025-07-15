@@ -13,7 +13,7 @@ CREATE TABLE organizations (
     phone VARCHAR(50),
     industry VARCHAR(100),
     employee_count INTEGER DEFAULT 0,
-    subscription_plan VARCHAR(50) DEFAULT 'free' CHECK (subscription_plan IN ('free', 'starter', 'team', 'growth', 'enterprise')),
+    subscription_plan VARCHAR(50) DEFAULT 'free' CHECK (subscription_plan IN ('free', 'team', 'enterprise')),
     subscription_status VARCHAR(50) DEFAULT 'active' CHECK (subscription_status IN ('active', 'inactive', 'cancelled', 'past_due')),
     subscription_start_date TIMESTAMP WITH TIME ZONE,
     subscription_end_date TIMESTAMP WITH TIME ZONE,

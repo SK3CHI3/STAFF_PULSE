@@ -13,11 +13,11 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://yourdomain.com"),
-  title: "StaffPulse – Employee Wellness Platform",
-  description: "AI-powered employee wellness platform with WhatsApp integration, analytics, and multi-organization support.",
+  title: "StaffPulse – Nurture Wellbeing, Amplify Performance",
+  description: "AI-powered employee wellness platform with WhatsApp integration. Nurture wellbeing, amplify performance through data-driven insights and analytics.",
   openGraph: {
-    title: "StaffPulse – Employee Wellness Platform",
-    description: "AI-powered employee wellness platform with WhatsApp integration, analytics, and multi-organization support.",
+    title: "StaffPulse – Nurture Wellbeing, Amplify Performance",
+    description: "AI-powered employee wellness platform with WhatsApp integration. Nurture wellbeing, amplify performance through data-driven insights and analytics.",
     url: "https://yourdomain.com",
     siteName: "StaffPulse",
     images: [
@@ -32,8 +32,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "StaffPulse – Employee Wellness Platform",
-    description: "AI-powered employee wellness platform with WhatsApp integration, analytics, and multi-organization support.",
+    title: "StaffPulse – Nurture Wellbeing, Amplify Performance",
+    description: "AI-powered employee wellness platform with WhatsApp integration. Nurture wellbeing, amplify performance through data-driven insights and analytics.",
     images: ["/logo.svg"],
   },
 };

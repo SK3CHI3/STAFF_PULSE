@@ -1,4 +1,4 @@
-# <img src="public/logo.svg" alt="STAFF_PULSE Logo" width="40" style="vertical-align:middle;"> STAFF_PULSE - Employee Wellness Platform
+# <img src="public/logo.svg" alt="STAFF_PULSE Logo" width="40" style="vertical-align:middle;"> STAFF_PULSE - Nurture Wellbeing, Amplify Performance
 
 A comprehensive employee wellness platform with WhatsApp integration and AI-powered insights.
 

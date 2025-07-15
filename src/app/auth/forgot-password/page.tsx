@@ -77,7 +77,7 @@ export default function ForgotPassword() {
                     <img src="/logo.svg" alt="StaffPulse Logo" className="w-12 h-12 rounded-xl bg-white p-2 shadow mr-3" />
                     <div className="text-left">
                       <h2 className="text-2xl font-bold text-gray-900">StaffPulse</h2>
-                      <p className="text-sm text-gray-500">Employee Wellbeing Platform</p>
+                      <p className="text-sm text-gray-500">Nurture Wellbeing, Amplify Performance</p>
                     </div>
                   </div>
                   <h1 className="text-3xl font-bold text-gray-900 mb-2">Reset Password</h1>

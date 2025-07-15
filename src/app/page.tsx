@@ -94,9 +94,9 @@ export default function Home() {
               </div>
 
               <h1 className="text-4xl lg:text-6xl font-bold text-gray-900 leading-tight">
-                Transform Your
+                Nurture Wellbeing,
                 <br />
-                <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Team Culture</span>
+                <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Amplify Performance</span>
               </h1>
 
               <p className="text-lg text-gray-600 leading-relaxed max-w-lg">
@@ -502,12 +502,12 @@ export default function Home() {
 
         <div className="max-w-5xl mx-auto text-center relative">
           <h2 className="text-5xl md:text-7xl font-black text-white mb-8 leading-tight">
-            Ready to Transform
-            <span className="bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent"> Your Culture?</span>
+            Ready to Nurture
+            <span className="bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent"> Wellbeing?</span>
           </h2>
           <p className="text-xl md:text-2xl text-white/70 mb-16 max-w-3xl mx-auto font-light leading-relaxed">
             Join forward-thinking companies using AI to build happier, more resilient teams.
-            Start your transformation today.
+            Start amplifying performance through wellbeing today.
           </p>
           <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
             <Link href="/auth/signup" className="group bg-gradient-to-r from-cyan-400 to-blue-500 text-white px-12 py-6 rounded-2xl text-xl font-bold hover:shadow-2xl hover:shadow-cyan-500/25 transition-all duration-300 transform hover:scale-105">
@@ -543,7 +543,7 @@ export default function Home() {
                 <span className="text-2xl font-bold text-white">StaffPulse</span>
               </div>
               <p className="text-white/60 text-lg leading-relaxed max-w-md">
-                AI-powered team wellness monitoring through WhatsApp.
+                Nurture wellbeing, amplify performance through AI-powered team wellness monitoring.
                 Building stronger, happier workplaces across Africa.
               </p>
             </div>

@@ -25,9 +25,39 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    flowType: 'pkce'
+    flowType: 'pkce',
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    storageKey: 'sb-auth-token',
+    debug: process.env.NODE_ENV === 'development'
   }
 })
+
+// Add session recovery helper
+export const recoverSession = async () => {
+  try {
+    console.log('🔄 [Session Recovery] Attempting to recover session...')
+    const { data: { session }, error } = await supabase.auth.getSession()
+
+    if (error) {
+      console.error('🚨 [Session Recovery] Error getting session:', error)
+      // Try to refresh the session
+      const { error: refreshError } = await supabase.auth.refreshSession()
+      if (refreshError) {
+        console.error('🚨 [Session Recovery] Refresh failed:', refreshError)
+        return null
+      }
+      // Get session again after refresh
+      const { data: { session: newSession } } = await supabase.auth.getSession()
+      return newSession
+    }
+
+    console.log('✅ [Session Recovery] Session recovered successfully')
+    return session
+  } catch (error) {
+    console.error('🚨 [Session Recovery] Exception:', error)
+    return null
+  }
+}
 console.log('✅ [Supabase] Client initialized successfully')
 
 // Client component Supabase client (for auth helpers)
@@ -49,7 +79,9 @@ export const createSupabaseClient = () => {
       autoRefreshToken: true,
       persistSession: true,
       detectSessionInUrl: true,
-      flowType: 'pkce'
+      flowType: 'pkce',
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storageKey: 'sb-auth-token'
     }
   })
 }

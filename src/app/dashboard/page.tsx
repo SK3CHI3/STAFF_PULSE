@@ -92,6 +92,7 @@ function Dashboard() {
   const [hasHydrated, setHasHydrated] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [lastOrgId, setLastOrgId] = useState<string | null>(null)
 
   // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   useEffect(() => { setHasHydrated(true) }, [])
@@ -319,7 +320,46 @@ function Dashboard() {
     return processedData.filter(item => item.mood > 0);
   }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
 
-  // Removed loadDashboardData function - logic moved to useEffect for stability
+  // Manual refresh function for when user navigates back to dashboard
+  const refreshDashboardData = useCallback(() => {
+    const orgId = profile?.organization?.id;
+    if (!orgId) return;
+
+    console.log('🔄 [DASHBOARD] Manual refresh triggered for org:', orgId);
+
+    // Force reset all states
+    setLoading(true);
+    setEmployeeStatsLoading(true);
+    setAlertsLoading(true);
+    setRecentResponsesLoading(true);
+    setMoodTrendsLoading(true);
+
+    // Clear errors
+    setEmployeeStatsError(null);
+    setAlertsError(null);
+    setRecentResponsesError(null);
+    setMoodTrendsError(null);
+
+    // Load data
+    Promise.allSettled([
+      fetchEmployeeStats(orgId),
+      fetchAlerts(orgId),
+      fetchRecentResponses(orgId),
+      fetchMoodTrends(orgId)
+    ]).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`Manual refresh fetch ${index} failed:`, result.reason);
+        }
+      });
+      console.log('✅ [DASHBOARD] Manual refresh completed');
+    }).catch((error) => {
+      console.error('Error in manual refresh:', error);
+    }).finally(() => {
+      setLoading(false);
+      console.log('🏁 [DASHBOARD] Manual refresh loading state set to false');
+    });
+  }, [profile?.organization?.id, fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends]);
 
   // Export organization data
   const handleExportReport = async () => {
@@ -364,20 +404,45 @@ function Dashboard() {
   // Load dashboard data when profile is available - SINGLE useEffect
   useEffect(() => {
     const orgId = profile?.organization?.id;
-    console.log('🔄 [DASHBOARD] useEffect triggered, orgId:', orgId);
+    console.log('🔄 [DASHBOARD] useEffect triggered, orgId:', orgId, 'lastOrgId:', lastOrgId);
 
     if (!orgId) {
       console.log('🚨 [DASHBOARD] No organization ID available');
+      setLastOrgId(null);
+      setLoading(false); // Don't stay in loading state
       return;
     }
 
-    if (loading) {
-      console.log('🚨 [DASHBOARD] Already loading, skipping...');
-      return;
-    }
+    // Check if this is a fresh load or organization change
+    const isOrgChange = lastOrgId !== orgId;
+    console.log('🔄 [DASHBOARD] Organization change detected:', isOrgChange);
 
-    console.log('🚀 [DASHBOARD] Starting data load for org:', orgId);
+    // Update the last org ID
+    setLastOrgId(orgId);
+
+    // Add timeout to prevent infinite loading
+    const loadingTimeout = setTimeout(() => {
+      console.warn('🚨 [DASHBOARD] Loading timeout - forcing completion');
+      setLoading(false);
+      setEmployeeStatsLoading(false);
+      setAlertsLoading(false);
+      setRecentResponsesLoading(false);
+      setMoodTrendsLoading(false);
+    }, 15000); // 15 second timeout
+
+    // Reset all loading states when starting fresh data load
+    console.log('🚀 [DASHBOARD] Starting fresh data load for org:', orgId);
     setLoading(true);
+    setEmployeeStatsLoading(true);
+    setAlertsLoading(true);
+    setRecentResponsesLoading(true);
+    setMoodTrendsLoading(true);
+
+    // Clear any previous errors
+    setEmployeeStatsError(null);
+    setAlertsError(null);
+    setRecentResponsesError(null);
+    setMoodTrendsError(null);
 
     // Load data directly in useEffect to avoid function recreation issues
     Promise.allSettled([
@@ -386,6 +451,7 @@ function Dashboard() {
       fetchRecentResponses(orgId),
       fetchMoodTrends(orgId)
     ]).then((results) => {
+      clearTimeout(loadingTimeout); // Clear timeout on successful completion
       results.forEach((result, index) => {
         if (result.status === 'rejected') {
           console.error(`Dashboard data fetch ${index} failed:`, result.reason);
@@ -393,12 +459,45 @@ function Dashboard() {
       });
       console.log('✅ [DASHBOARD] Data load completed');
     }).catch((error) => {
+      clearTimeout(loadingTimeout); // Clear timeout on error
       console.error('Error loading dashboard data:', error);
     }).finally(() => {
       setLoading(false);
       console.log('🏁 [DASHBOARD] Loading state set to false');
     });
+
+    // Cleanup function
+    return () => {
+      clearTimeout(loadingTimeout);
+    };
   }, [profile?.organization?.id]); // Only depend on orgId
+
+  // Cleanup function to reset states when component unmounts
+  useEffect(() => {
+    return () => {
+      console.log('🧹 [DASHBOARD] Component unmounting, cleaning up states');
+      setLoading(false);
+      setEmployeeStatsLoading(false);
+      setAlertsLoading(false);
+      setRecentResponsesLoading(false);
+      setMoodTrendsLoading(false);
+    };
+  }, []);
+
+  // Listen for page visibility changes to refresh data when user comes back
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden && profile?.organization?.id) {
+        console.log('🔄 [DASHBOARD] Page became visible, refreshing data');
+        refreshDashboardData();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshDashboardData, profile?.organization?.id]);
 
   // Fetch real departments from database
   const fetchDepartmentsForCheckin = useCallback(async () => {
@@ -570,9 +669,32 @@ function Dashboard() {
 
   // Profile is guaranteed to exist here due to auth guards above
 
-  // If main loading is stuck, show the dashboard anyway with individual loading states
-  if (loading && !hasHydrated) {
+  // Add a safety check - if loading for too long, show content anyway
+  const [forceShow, setForceShow] = useState(false);
+
+  useEffect(() => {
+    const forceShowTimer = setTimeout(() => {
+      if (loading) {
+        console.warn('🚨 [DASHBOARD] Forcing dashboard display after timeout');
+        setForceShow(true);
+        setLoading(false);
+      }
+    }, 8000); // Force show after 8 seconds
+
+    return () => clearTimeout(forceShowTimer);
+  }, [loading]);
+
+  // Show loading only if we haven't hydrated and haven't forced show
+  if (loading && !hasHydrated && !forceShow) {
     console.log('🔄 [DASHBOARD] Main loading active, waiting for hydration...');
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -591,6 +713,20 @@ function Dashboard() {
             </div>
 
             <div className="flex items-center space-x-3">
+              <button
+                onClick={refreshDashboardData}
+                disabled={loading}
+                className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Refresh dashboard data"
+              >
+                {loading ? (
+                  <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin"></div>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                )}
+              </button>
               <button
                 className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center space-x-2"
                 onClick={() => setShowCheckinModal(true)}

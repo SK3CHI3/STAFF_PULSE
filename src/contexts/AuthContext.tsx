@@ -327,32 +327,58 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let isMounted = true
 
     const initializeAuth = async () => {
+      const initTimeout = setTimeout(() => {
+        console.warn('🔐 [AuthProvider] Session initialization timeout - forcing completion')
+        setState(prev => ({
+          ...prev,
+          loading: false,
+          initialized: true,
+          error: null
+        }))
+      }, 10000) // 10 second timeout
+
       try {
         console.log('🔐 [AuthProvider] Initializing authentication...')
 
         // Check if we're in a browser environment
         if (typeof window === 'undefined') {
           console.log('🔐 [AuthProvider] Server-side rendering, skipping session check')
+          clearTimeout(initTimeout)
           return
         }
 
-        // Get initial session
-        const { data: { session }, error } = await supabase.auth.getSession()
+        // Get initial session with timeout
+        const sessionPromise = supabase.auth.getSession()
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Session fetch timeout')), 8000)
+        )
+
+        const { data: { session }, error } = await Promise.race([
+          sessionPromise,
+          timeoutPromise
+        ]) as any
         
         if (!isMounted) {
           console.log('🔐 [AuthProvider] Component unmounted during initialization')
+          clearTimeout(initTimeout)
           return
         }
 
         if (error) {
           console.error('🔐 [AuthProvider] Session error:', error)
-          // Try to recover from session error
+          // Try to recover from session error with timeout
           try {
             console.log('🔐 [AuthProvider] Attempting session recovery...')
-            await supabase.auth.refreshSession()
+            const refreshPromise = supabase.auth.refreshSession()
+            const refreshTimeout = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Refresh timeout')), 5000)
+            )
+
+            await Promise.race([refreshPromise, refreshTimeout])
             const { data: { session: newSession } } = await supabase.auth.getSession()
             if (newSession?.user) {
               console.log('🔐 [AuthProvider] Session recovered after refresh')
+              clearTimeout(initTimeout)
               await setUserAndProfile(newSession.user)
               return
             }
@@ -360,6 +386,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             console.error('🔐 [AuthProvider] Session refresh failed:', refreshError)
           }
 
+          clearTimeout(initTimeout)
           setState(prev => ({
             ...prev,
             loading: false,
@@ -376,9 +403,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
 
         if (session?.user) {
+          clearTimeout(initTimeout)
           await setUserAndProfile(session.user)
         } else {
           // No session, set initialized state
+          clearTimeout(initTimeout)
           setState(prev => ({
             ...prev,
             loading: false,
@@ -388,12 +417,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       } catch (error) {
         console.error('🔐 [AuthProvider] Initialization error:', error)
+        clearTimeout(initTimeout)
         if (isMounted) {
-          setState(prev => ({ 
-            ...prev, 
-            loading: false, 
-            initialized: true, 
-            error: error instanceof Error ? error.message : 'Initialization failed' 
+          setState(prev => ({
+            ...prev,
+            loading: false,
+            initialized: true,
+            error: null // Don't show error to user, just treat as logged out
           }))
         }
       }

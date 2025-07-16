@@ -49,7 +49,7 @@ function DashboardLayoutContent({
     const safetyTimer = setTimeout(() => {
       console.warn('🚨 [Dashboard] Safety timeout: forcing loading state to false')
       setIsPageLoading(false)
-    }, 2000)
+    }, 5000) // Increased from 2s to 5s
 
     return () => {
       clearTimeout(timer)

@@ -319,41 +319,7 @@ function Dashboard() {
     return processedData.filter(item => item.mood > 0);
   }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
 
-  // Load dashboard data function
-  const loadDashboardData = useCallback(async (orgId?: string) => {
-    // Use passed orgId or get from current profile
-    const organizationId = orgId || profile?.organization?.id;
-
-    if (!organizationId) {
-      return
-    }
-
-    if (loading) {
-      return // Prevent multiple simultaneous calls
-    }
-
-    setLoading(true)
-    try {
-      // Use Promise.allSettled to prevent one failure from stopping others
-      const results = await Promise.allSettled([
-        fetchEmployeeStats(organizationId),
-        fetchAlerts(organizationId),
-        fetchRecentResponses(organizationId),
-        fetchMoodTrends(organizationId)
-      ])
-
-      // Log any failures but don't crash
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          console.error(`Dashboard data fetch ${index} failed:`, result.reason)
-        }
-      })
-    } catch (error) {
-      console.error('Error loading dashboard data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }, [fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends]);
+  // Removed loadDashboardData function - logic moved to useEffect for stability
 
   // Export organization data
   const handleExportReport = async () => {
@@ -399,11 +365,40 @@ function Dashboard() {
   useEffect(() => {
     const orgId = profile?.organization?.id;
     console.log('🔄 [DASHBOARD] useEffect triggered, orgId:', orgId);
-    if (orgId) {
-      console.log('🚀 [DASHBOARD] Loading dashboard data...');
-      loadDashboardData(orgId) // Pass orgId explicitly
+
+    if (!orgId) {
+      console.log('🚨 [DASHBOARD] No organization ID available');
+      return;
     }
-  }, [profile?.organization?.id, loadDashboardData]);
+
+    if (loading) {
+      console.log('🚨 [DASHBOARD] Already loading, skipping...');
+      return;
+    }
+
+    console.log('🚀 [DASHBOARD] Starting data load for org:', orgId);
+    setLoading(true);
+
+    // Load data directly in useEffect to avoid function recreation issues
+    Promise.allSettled([
+      fetchEmployeeStats(orgId),
+      fetchAlerts(orgId),
+      fetchRecentResponses(orgId),
+      fetchMoodTrends(orgId)
+    ]).then((results) => {
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          console.error(`Dashboard data fetch ${index} failed:`, result.reason);
+        }
+      });
+      console.log('✅ [DASHBOARD] Data load completed');
+    }).catch((error) => {
+      console.error('Error loading dashboard data:', error);
+    }).finally(() => {
+      setLoading(false);
+      console.log('🏁 [DASHBOARD] Loading state set to false');
+    });
+  }, [profile?.organization?.id]); // Only depend on orgId
 
   // Fetch real departments from database
   const fetchDepartmentsForCheckin = useCallback(async () => {
@@ -574,6 +569,11 @@ function Dashboard() {
   };
 
   // Profile is guaranteed to exist here due to auth guards above
+
+  // If main loading is stuck, show the dashboard anyway with individual loading states
+  if (loading && !hasHydrated) {
+    console.log('🔄 [DASHBOARD] Main loading active, waiting for hydration...');
+  }
 
   return (
     <div className="bg-gray-50 min-h-screen">

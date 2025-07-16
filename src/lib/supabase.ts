@@ -19,11 +19,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 console.log('🔗 [Supabase] Initializing client with URL:', supabaseUrl)
 console.log('🔗 [Supabase] Environment check passed')
 
-// Client-side Supabase client with simple session configuration
+// Client-side Supabase client with proper session configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
-    persistSession: true
+    persistSession: true,
+    detectSessionInUrl: true,
+    flowType: 'pkce'
   }
 })
 console.log('✅ [Supabase] Client initialized successfully')
@@ -45,7 +47,9 @@ export const createSupabaseClient = () => {
   return createClient(url, key, {
     auth: {
       autoRefreshToken: true,
-      persistSession: true
+      persistSession: true,
+      detectSessionInUrl: true,
+      flowType: 'pkce'
     }
   })
 }

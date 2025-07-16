@@ -274,10 +274,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = useCallback(async (): Promise<{ error: AuthError | null }> => {
     try {
       console.log('🔐 [AuthProvider] Signing out...')
+
+      // Clear all local storage first
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.clear()
+          sessionStorage.clear()
+          console.log('🔐 [AuthProvider] Local storage cleared')
+        } catch (storageError) {
+          console.warn('🔐 [AuthProvider] Failed to clear storage:', storageError)
+        }
+      }
+
       const { error } = await supabase.auth.signOut()
-      
+
       if (error) {
         console.error('🔐 [AuthProvider] Sign-out error:', error)
+        // Even if signOut fails, clear the state
+        setState(prev => ({
+          ...prev,
+          user: null,
+          profile: null,
+          loading: false,
+          initialized: true,
+          error: null
+        }))
         return { error }
       }
 
@@ -288,6 +309,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error('🔐 [AuthProvider] Sign-out exception:', errorMessage)
+      // Clear state even on exception
+      setState(prev => ({
+        ...prev,
+        user: null,
+        profile: null,
+        loading: false,
+        initialized: true,
+        error: null
+      }))
       return { error: new AuthError(errorMessage) }
     }
   }, [])
@@ -299,7 +329,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initializeAuth = async () => {
       try {
         console.log('🔐 [AuthProvider] Initializing authentication...')
-        
+
+        // Check if we're in a browser environment
+        if (typeof window === 'undefined') {
+          console.log('🔐 [AuthProvider] Server-side rendering, skipping session check')
+          return
+        }
+
         // Get initial session
         const { data: { session }, error } = await supabase.auth.getSession()
         
@@ -310,18 +346,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (error) {
           console.error('🔐 [AuthProvider] Session error:', error)
-          setState(prev => ({ 
-            ...prev, 
-            loading: false, 
-            initialized: true, 
-            error: error.message 
+          // Try to recover from session error
+          try {
+            console.log('🔐 [AuthProvider] Attempting session recovery...')
+            await supabase.auth.refreshSession()
+            const { data: { session: newSession } } = await supabase.auth.getSession()
+            if (newSession?.user) {
+              console.log('🔐 [AuthProvider] Session recovered after refresh')
+              await setUserAndProfile(newSession.user)
+              return
+            }
+          } catch (refreshError) {
+            console.error('🔐 [AuthProvider] Session refresh failed:', refreshError)
+          }
+
+          setState(prev => ({
+            ...prev,
+            loading: false,
+            initialized: true,
+            error: null // Don't show error to user, just treat as logged out
           }))
           return
         }
 
-        console.log('🔐 [AuthProvider] Initial session:', { 
-          hasSession: !!session, 
-          userId: session?.user?.id 
+        console.log('🔐 [AuthProvider] Initial session:', {
+          hasSession: !!session,
+          userId: session?.user?.id,
+          expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A'
         })
 
         if (session?.user) {

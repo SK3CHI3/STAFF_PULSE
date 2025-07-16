@@ -318,9 +318,22 @@ export default function Billing() {
     if (priceToCheck === 0) return { valid: false, error: 'No payment required for free plan.' }
     if (!priceToCheck || isNaN(priceToCheck) || priceToCheck <= 0) return { valid: false, error: 'Invalid amount.' }
     if (!currencyToCheck) return { valid: false, error: 'Currency is required.' }
-    if (!org.billing_email && !org.email) return { valid: false, error: 'Billing email is required.' }
-    const email = org.billing_email || org.email
+
+    // Use billing_email, org email, profile organization email, or user email as fallback
+    const email = org.billing_email || org.email || profile?.organization?.email || profile?.email
+    console.log('💰 [VALIDATION] Email check:', {
+      billing_email: org.billing_email,
+      org_email: org.email,
+      profile_org_email: profile?.organization?.email,
+      profile_email: profile?.email,
+      final_email: email
+    })
+    if (!email) {
+      console.error('💰 [VALIDATION] No email found in any source!')
+      return { valid: false, error: 'Please set a billing email in your organization settings before making a payment.' }
+    }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { valid: false, error: 'Invalid billing email.' }
+
     // Phone is optional for card payments, but validate format if provided
     if (org.phone && !/^\+?\d{10,15}$/.test(org.phone)) return { valid: false, error: 'Invalid phone number format. Use +254...' }
     if (!org.name) return { valid: false, error: 'Company name is required.' }
@@ -521,6 +534,18 @@ export default function Billing() {
 
       // Validate payment data for the new plan
       console.log('💰 [PAYMENT CONFIRM] Validating payment data for new plan...')
+      console.log('💰 [PAYMENT CONFIRM] Organization data:', {
+        id: org.id,
+        name: org.name,
+        billing_email: org.billing_email,
+        email: org.email,
+        phone: org.phone
+      })
+      console.log('💰 [PAYMENT CONFIRM] Profile data:', {
+        email: profile?.email,
+        firstName: profile?.first_name,
+        lastName: profile?.last_name
+      })
       const validation = validatePaymentData(selectedPlan.price, selectedPlan.currency)
       console.log('💰 [PAYMENT CONFIRM] Validation result:', validation)
       if (!validation.valid) {
@@ -548,7 +573,7 @@ export default function Billing() {
         const paymentData = {
           amount: String(selectedPlan.price),
           currency: selectedPlan.currency,
-          email: org.billing_email || org.email,
+          email: org.billing_email || org.email || profile?.organization?.email || profile?.email || '',
           phone: org.phone || '',
           firstName: org.name,
           apiRef: `plan_${pendingPlanId}_${org.id}_${Date.now()}`,
@@ -741,7 +766,7 @@ export default function Billing() {
                   className="intaSendPayButton absolute -left-[9999px] opacity-0 pointer-events-none"
                   data-amount={plan.price}
                   data-currency={plan.currency}
-                  data-email={org.billing_email || org.email}
+                  data-email={org.billing_email || org.email || profile?.organization?.email || profile?.email || ''}
                   data-phone_number={org.phone || ''}
                   data-first_name={org.name}
                   data-api_ref={`sub_${org.id}_${Date.now()}`}
@@ -831,7 +856,7 @@ export default function Billing() {
               </div>
               <div className="mb-4">
                 <span className="block text-sm text-gray-600">Billing Email</span>
-                <span className="font-medium text-blue-700">{org.billing_email || org.email}</span>
+                <span className="font-medium text-blue-700">{org.billing_email || org.email || profile?.organization?.email || profile?.email || 'Not set'}</span>
               </div>
               <div className="mb-4">
                 <span className="block text-sm text-gray-600">Address</span>
@@ -907,7 +932,7 @@ export default function Billing() {
             className="intaSendPayButton absolute -left-[9999px] opacity-0 pointer-events-none"
             data-amount={plan.price}
             data-currency={plan.currency}
-            data-email={org.billing_email || org.email}
+            data-email={org.billing_email || org.email || profile?.organization?.email || profile?.email || ''}
             data-phone_number={org.phone || ''}
             data-first_name={org.name}
             data-api_ref={`upgrade_${org.id}_${Date.now()}`}

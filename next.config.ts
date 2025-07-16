@@ -50,16 +50,16 @@ const nextConfig: NextConfig = {
             value: 'max-age=63072000; includeSubDomains; preload'
           },
           {
-            key: 'Cache-Control',
-            value: 'no-cache, no-store, must-revalidate',
+            key: 'X-Frame-Options',
+            value: 'DENY'
           },
           {
-            key: 'Pragma',
-            value: 'no-cache',
+            key: 'X-Content-Type-Options',
+            value: 'nosniff'
           },
           {
-            key: 'Expires',
-            value: '0',
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin'
           },
         ],
       },

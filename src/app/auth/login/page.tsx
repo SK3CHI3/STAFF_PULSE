@@ -29,17 +29,7 @@ export default function Login() {
     }
   }, [user, profile, isLoading, router])
 
-  // Safety timeout to prevent stuck loading states - but only for very long delays
-  useEffect(() => {
-    if (isLoading) {
-      const timeout = setTimeout(() => {
-        console.warn('📝 [Login] Loading timeout - resetting loading state')
-        setIsLoading(false)
-      }, 30000) // 30 second safety timeout (increased from 15s)
-
-      return () => clearTimeout(timeout)
-    }
-  }, [isLoading])
+  // Removed complex timeout logic - keeping it simple
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

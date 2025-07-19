@@ -270,9 +270,8 @@ export default function Signup() {
                     type="text"
                     value={formData.companyName}
                     onChange={handleInputChange}
-                    required
                     className="w-full px-4 py-3 bg-white/50 border border-white/30 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 backdrop-blur-sm text-gray-900"
-                    placeholder="Acme Corp"
+                    placeholder="Acme Corp (optional - can be set up later)"
                   />
                 </div>
                 <div>

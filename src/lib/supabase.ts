@@ -19,7 +19,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 console.log('🔗 [Supabase] Initializing client with URL:', supabaseUrl)
 console.log('🔗 [Supabase] Environment check passed')
 
-// Client-side Supabase client with proper session configuration
+// Client-side Supabase client with multi-tab optimized configuration
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
@@ -28,7 +28,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce',
     storage: typeof window !== 'undefined' ? window.localStorage : undefined,
     storageKey: 'sb-auth-token',
-    debug: process.env.NODE_ENV === 'development'
+    // Optimize for multi-tab scenarios
+    debug: false // Reduce console noise in production
   }
 })
 

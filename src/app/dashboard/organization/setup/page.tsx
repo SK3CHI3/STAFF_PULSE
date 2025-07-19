@@ -26,7 +26,9 @@ export default function OrganizationSetup() {
         router.push('/auth/login')
         return
       }
-      if (profile?.organization?.id) {
+      // Check if user has organization_id (regardless of whether organization data loaded)
+      if (profile?.organization_id) {
+        console.log('🏢 [OrgSetup] User already has organization_id:', profile.organization_id)
         // User already has an organization, redirect to dashboard
         router.push('/dashboard')
         return

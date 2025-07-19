@@ -31,8 +31,10 @@ export function AuthGuard({
       console.log('🔐 [AuthGuard] Redirecting to login...')
       router.push(redirectTo)
     } else if (requireOrganization && needsOrganization) {
-      console.log('🔐 [AuthGuard] Redirecting to organization setup...')
-      router.push('/dashboard/organization/setup')
+      console.log('🔐 [AuthGuard] User needs organization - this should be rare since org is created during signup')
+      // Since users create organization during signup, redirect to dashboard
+      // The dashboard will handle any missing organization data
+      router.push('/dashboard')
     }
   }, [needsAuth, needsOrganization, requireOrganization, router, redirectTo])
 
@@ -48,7 +50,7 @@ export function AuthGuard({
 
   // Organization required but not set up
   if (requireOrganization && needsOrganization) {
-    return fallback || <LoadingState message="Setting up your organization..." />
+    return fallback || <LoadingState message="Loading dashboard..." />
   }
 
   // Error state

@@ -53,31 +53,12 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  // Refresh session if expired - required for Server Components
-  const { data: { session }, error } = await supabase.auth.getSession()
-
-  // Protected routes that require authentication
-  const protectedPaths = ['/dashboard', '/super-admin']
-  const isProtectedPath = protectedPaths.some(path => 
-    request.nextUrl.pathname.startsWith(path)
-  )
-
-  // Auth pages that should redirect if already authenticated
-  const authPaths = ['/auth/login', '/auth/signup']
-  const isAuthPath = authPaths.some(path => 
-    request.nextUrl.pathname.startsWith(path)
-  )
-
-  // If accessing protected route without session, redirect to login
-  if (isProtectedPath && !session) {
-    console.log('🔐 [Middleware] Redirecting to login - no session for protected route')
-    return NextResponse.redirect(new URL('/auth/login', request.url))
-  }
-
-  // If accessing auth pages with valid session, redirect to dashboard
-  if (isAuthPath && session) {
-    console.log('🔐 [Middleware] Redirecting to dashboard - already authenticated')
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  // Only refresh session for server components - no redirects
+  // Let client-side AuthGuard handle all authentication logic
+  try {
+    await supabase.auth.getSession()
+  } catch (error) {
+    console.warn('🔐 [Middleware] Session refresh failed:', error)
   }
 
   return response

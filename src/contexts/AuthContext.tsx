@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react'
 import { User, AuthError } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
@@ -67,6 +67,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 // Auth Provider Component
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  // Generate unique ID for this provider instance (each tab gets its own)
+  // This is normal - Supabase handles multi-tab sync via localStorage and auth events
+  const providerId = useMemo(() => Math.random().toString(36).substr(2, 9), [])
+
   const [state, setState] = useState<AuthState>({
     user: null,
     profile: null,
@@ -75,28 +79,161 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     error: null
   })
 
+  // Add timeout and retry state
+  const [initTimeout, setInitTimeout] = useState<NodeJS.Timeout | null>(null)
+  const [profileFetching, setProfileFetching] = useState(false)
+  const MAX_RETRIES = 2 // Reduced retries
+  const INIT_TIMEOUT = 10000 // 10 seconds
+  const PROFILE_TIMEOUT = 8000 // 8 seconds for profile fetch
+
+  // Global profile cache key for multi-tab coordination
+  const PROFILE_CACHE_KEY = 'staffpulse_profile_cache'
+  const PROFILE_FETCH_LOCK_KEY = 'staffpulse_profile_fetching'
+
   // Clear error function
   const clearError = useCallback(() => {
     setState(prev => ({ ...prev, error: null }))
   }, [])
 
-  // Simple profile fetch with basic error handling
-  const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
-    try {
-      console.log('🔐 [AuthProvider] Fetching profile for user:', userId)
+  // Clear profile cache when user changes
+  const clearProfileCache = useCallback(() => {
+    localStorage.removeItem(PROFILE_CACHE_KEY)
+    localStorage.removeItem(PROFILE_FETCH_LOCK_KEY)
+  }, [PROFILE_CACHE_KEY, PROFILE_FETCH_LOCK_KEY])
 
-      const { data: profileData, error: profileError } = await supabase
+  // Optimized profile fetch with multi-tab coordination
+  const fetchProfile = useCallback(async (userId: string): Promise<UserProfile | null> => {
+    // Check if another tab is already fetching
+    const isAnotherTabFetching = localStorage.getItem(PROFILE_FETCH_LOCK_KEY)
+    if (isAnotherTabFetching && profileFetching) {
+      console.log(`🔐 [AuthProvider:${providerId}] Another tab is fetching profile, waiting...`)
+
+      // Wait for the other tab to finish and check cache
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      const cachedProfile = localStorage.getItem(PROFILE_CACHE_KEY)
+      if (cachedProfile) {
+        try {
+          const parsed = JSON.parse(cachedProfile)
+          if (parsed.userId === userId && Date.now() - parsed.timestamp < 30000) { // 30 second cache
+            console.log(`🔐 [AuthProvider:${providerId}] Using cached profile from another tab`)
+            return parsed.profile
+          }
+        } catch (error) {
+          console.warn('Failed to parse cached profile:', error)
+        }
+      }
+    }
+
+    // Prevent concurrent profile fetches in this tab
+    if (profileFetching) {
+      console.log(`🔐 [AuthProvider:${providerId}] Profile fetch already in progress in this tab, skipping`)
+      return null
+    }
+
+    setProfileFetching(true)
+    localStorage.setItem(PROFILE_FETCH_LOCK_KEY, Date.now().toString())
+
+    try {
+      console.log(`🔐 [AuthProvider:${providerId}] Fetching profile for user: ${userId}`)
+
+      // Check cache first - use longer cache during connectivity issues
+      const cachedProfile = localStorage.getItem(PROFILE_CACHE_KEY)
+      if (cachedProfile) {
+        try {
+          const parsed = JSON.parse(cachedProfile)
+          const cacheAge = Date.now() - parsed.timestamp
+          const maxCacheAge = 300000 // 5 minutes during connectivity issues
+
+          if (parsed.userId === userId && cacheAge < maxCacheAge) {
+            console.log(`🔐 [AuthProvider:${providerId}] Using cached profile (age: ${Math.round(cacheAge/1000)}s)`)
+            return parsed.profile
+          }
+        } catch (error) {
+          console.warn('Failed to parse cached profile:', error)
+        }
+      }
+
+      // Debug: Check current session before making query
+      const currentSession = await supabase.auth.getSession()
+      console.log(`🔐 [AuthProvider:${providerId}] Current session before profile fetch:`, {
+        hasSession: !!currentSession.data.session,
+        hasUser: !!currentSession.data.session?.user,
+        userId: currentSession.data.session?.user?.id,
+        sessionError: currentSession.error?.message
+      })
+
+      // Fetch from database with timeout
+      const profilePromise = supabase
         .from('profiles')
-        .select('*')
+        .select('id, first_name, last_name, email, role, organization_id')
         .eq('id', userId)
         .single()
 
-      if (profileError) {
-        console.error('🔐 [AuthProvider] Profile fetch error:', profileError.message)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Profile fetch timeout')), PROFILE_TIMEOUT)
+      )
 
-        // If profile doesn't exist, just return null - let signup handle profile creation
+      let profileData = null
+      let profileError = null
+
+      try {
+        console.log(`🔐 [AuthProvider:${providerId}] Starting profile query...`)
+        const result = await Promise.race([
+          profilePromise,
+          timeoutPromise
+        ]) as any
+
+        console.log(`🔐 [AuthProvider:${providerId}] Profile query completed:`, {
+          hasData: !!result.data,
+          hasError: !!result.error,
+          errorMessage: result.error?.message,
+          errorCode: result.error?.code
+        })
+
+        profileData = result.data
+        profileError = result.error
+      } catch (timeoutError) {
+        console.warn(`🔐 [AuthProvider:${providerId}] Profile fetch timed out, checking for stale cache`)
+
+        // If fetch times out, try to use stale cache
+        const staleCache = localStorage.getItem(PROFILE_CACHE_KEY)
+        if (staleCache) {
+          try {
+            const parsed = JSON.parse(staleCache)
+            if (parsed.userId === userId) {
+              console.log(`🔐 [AuthProvider:${providerId}] Using stale cached profile due to timeout`)
+              return parsed.profile
+            }
+          } catch (error) {
+            console.warn('Failed to parse stale cache:', error)
+          }
+        }
+
+        // No cache available, return null
+        return null
+      }
+
+      if (profileError) {
+        console.error(`🔐 [AuthProvider:${providerId}] Profile fetch error:`, profileError.message)
+
+        // If profile doesn't exist, just return null
         if (profileError.code === 'PGRST116') {
-          console.log('🔐 [AuthProvider] Profile not found')
+          console.log(`🔐 [AuthProvider:${providerId}] Profile not found`)
+          return null
+        }
+
+        // Try stale cache on error too
+        const staleCache = localStorage.getItem(PROFILE_CACHE_KEY)
+        if (staleCache) {
+          try {
+            const parsed = JSON.parse(staleCache)
+            if (parsed.userId === userId) {
+              console.log(`🔐 [AuthProvider:${providerId}] Using stale cached profile due to error`)
+              return parsed.profile
+            }
+          } catch (error) {
+            console.warn('Failed to parse stale cache on error:', error)
+          }
         }
 
         return null
@@ -106,43 +243,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userId: profileData.id,
         email: profileData.email,
         role: profileData.role,
-        hasOrganization: !!profileData.organization_id
+        hasOrganization: !!profileData.organization_id,
+        organizationId: profileData.organization_id
       })
 
-      // If profile has organization_id, fetch organization data separately
+      // Try to fetch organization data quickly if organization_id exists
       let organizationData = null
       if (profileData.organization_id) {
-        console.log('🔐 [AuthProvider] Fetching organization data...')
-        const { data: orgData, error: orgError } = await supabase
-          .from('organizations')
-          .select('id, name, email, subscription_plan, subscription_status')
-          .eq('id', profileData.organization_id)
-          .single()
+        try {
+          console.log('🔐 [AuthProvider] Fetching organization data quickly...')
+          const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .select('id, name, subscription_plan')
+            .eq('id', profileData.organization_id)
+            .single()
 
-        if (orgError) {
-          console.warn('🔐 [AuthProvider] Organization fetch warning:', orgError.message)
-          // Don't fail the whole profile fetch if org fetch fails
-        } else {
-          organizationData = orgData
-          console.log('🔐 [AuthProvider] Organization data fetched:', organizationData.name)
+          if (orgError) {
+            console.warn('🔐 [AuthProvider] Organization fetch failed:', orgError.message)
+          } else {
+            organizationData = orgData
+            console.log('🔐 [AuthProvider] Organization data loaded:', organizationData.name)
+          }
+        } catch (error) {
+          console.warn('🔐 [AuthProvider] Organization fetch exception:', error)
         }
       }
 
-      // Combine profile and organization data
       const userProfile: UserProfile = {
         ...profileData,
         organization: organizationData
       }
 
-      console.log('🔐 [AuthProvider] Profile fetch completed successfully')
+      // Cache the profile for other tabs
+      const cacheData = {
+        userId,
+        profile: userProfile,
+        timestamp: Date.now()
+      }
+      localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(cacheData))
+
+      console.log(`🔐 [AuthProvider:${providerId}] Profile fetch completed successfully`)
       return userProfile
     } catch (error) {
-      // Simple error logging
-      console.error('🔐 [AuthProvider] Profile fetch exception:',
+      console.error(`🔐 [AuthProvider:${providerId}] Profile fetch exception:`,
         error instanceof Error ? error.message : 'Unknown error')
       return null
+    } finally {
+      setProfileFetching(false)
+      localStorage.removeItem(PROFILE_FETCH_LOCK_KEY)
     }
-  }, [])
+  }, [PROFILE_TIMEOUT, profileFetching, providerId, PROFILE_CACHE_KEY, PROFILE_FETCH_LOCK_KEY])
 
 
 
@@ -163,12 +313,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }))
   }, [state.user, fetchProfile])
 
-  // Set user and fetch profile
+  // Simplified user and profile setting - fail fast approach
   const setUserAndProfile = useCallback(async (user: User | null) => {
     console.log('🔐 [AuthProvider] Setting user and profile:', { userId: user?.id })
 
     if (!user) {
-      console.log('🔐 [AuthProvider] No user provided, clearing state')
+      console.log(`🔐 [AuthProvider:${providerId}] No user provided, clearing state`)
+      clearProfileCache() // Clear cache when user logs out
       setState(prev => ({
         ...prev,
         user: null,
@@ -180,27 +331,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // Set user immediately
-    console.log('🔐 [AuthProvider] Setting user in state')
-    setState(prev => ({ ...prev, user, error: null }))
-
-    // Fetch profile
-    console.log('🔐 [AuthProvider] Starting profile fetch...')
-    const profile = await fetchProfile(user.id)
-
-    if (profile) {
-      console.log('🔐 [AuthProvider] Profile fetch successful, updating state')
-    } else {
-      console.error('🔐 [AuthProvider] Profile fetch failed')
-    }
-
+    // Set user immediately and mark as complete - authentication is done
     setState(prev => ({
       ...prev,
-      profile,
-      error: profile ? null : 'Failed to load profile - please check your account setup',
+      user,
+      error: null,
       loading: false,
       initialized: true
     }))
+
+    // Try to fetch profile quickly - if it fails, continue without it
+    console.log('🔐 [AuthProvider] Attempting quick profile fetch...')
+    try {
+      const profile = await fetchProfile(user.id)
+      setState(prev => ({
+        ...prev,
+        profile,
+        error: profile ? null : 'Profile could not be loaded, but you are authenticated'
+      }))
+    } catch (error) {
+      console.warn('🔐 [AuthProvider] Profile fetch failed, continuing without profile:', error)
+      setState(prev => ({
+        ...prev,
+        profile: null,
+        error: 'Profile could not be loaded, but you are authenticated'
+      }))
+    }
   }, [fetchProfile])
 
   // Sign in function
@@ -322,92 +478,106 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Initialize authentication
+  // Enhanced authentication initialization with timeout
   useEffect(() => {
     let isMounted = true
 
     const initializeAuth = async () => {
-      const initTimeout = setTimeout(() => {
-        console.warn('🔐 [AuthProvider] Session initialization timeout - forcing completion')
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          initialized: true,
-          error: null
-        }))
-      }, 10000) // 10 second timeout
-
       try {
-        console.log('🔐 [AuthProvider] Initializing authentication...')
-
         // Check if we're in a browser environment
         if (typeof window === 'undefined') {
           console.log('🔐 [AuthProvider] Server-side rendering, skipping session check')
-          clearTimeout(initTimeout)
           return
         }
 
-        // Get initial session with timeout
-        const sessionPromise = supabase.auth.getSession()
-        const timeoutPromise = new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Session fetch timeout')), 8000)
-        )
-
-        const { data: { session }, error } = await Promise.race([
-          sessionPromise,
-          timeoutPromise
-        ]) as any
-        
-        if (!isMounted) {
-          console.log('🔐 [AuthProvider] Component unmounted during initialization')
-          clearTimeout(initTimeout)
+        // Prevent multiple initializations by checking current state
+        if (state.initialized || state.loading === false) {
+          console.log(`🔐 [AuthProvider:${providerId}] Already initialized or completed, skipping`)
           return
         }
 
-        if (error) {
-          console.error('🔐 [AuthProvider] Session error:', error)
-          // Try to recover from session error with timeout
-          try {
-            console.log('🔐 [AuthProvider] Attempting session recovery...')
-            const refreshPromise = supabase.auth.refreshSession()
-            const refreshTimeout = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Refresh timeout')), 5000)
-            )
+        console.log(`🔐 [AuthProvider:${providerId}] Initializing authentication (new tab/refresh)...`)
 
-            await Promise.race([refreshPromise, refreshTimeout])
-            const { data: { session: newSession } } = await supabase.auth.getSession()
-            if (newSession?.user) {
-              console.log('🔐 [AuthProvider] Session recovered after refresh')
-              clearTimeout(initTimeout)
-              await setUserAndProfile(newSession.user)
-              return
-            }
-          } catch (refreshError) {
-            console.error('🔐 [AuthProvider] Session refresh failed:', refreshError)
+        // Set up initialization timeout
+        const timeout = setTimeout(() => {
+          if (isMounted) {
+            console.warn('🔐 [AuthProvider] Initialization timeout - forcing completion')
+            setState(prev => ({
+              ...prev,
+              loading: false,
+              initialized: true,
+              error: 'Authentication initialization timed out'
+            }))
           }
+        }, INIT_TIMEOUT)
 
-          clearTimeout(initTimeout)
+        setInitTimeout(timeout)
+
+        // Session check with timeout and retry
+        let session = null
+        let error = null
+
+        try {
+          const sessionPromise = supabase.auth.getSession()
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Session check timeout')), 8000) // Increased timeout
+          )
+
+          const result = await Promise.race([
+            sessionPromise,
+            timeoutPromise
+          ]) as any
+
+          session = result.data?.session
+          error = result.error
+        } catch (timeoutError) {
+          console.warn(`🔐 [AuthProvider:${providerId}] Session check timed out, checking localStorage fallback`)
+
+          // Fallback: check localStorage directly for session
+          try {
+            const storedSession = localStorage.getItem('sb-auth-token')
+            if (storedSession) {
+              const parsed = JSON.parse(storedSession)
+              if (parsed.access_token && parsed.expires_at > Date.now() / 1000) {
+                console.log(`🔐 [AuthProvider:${providerId}] Found valid session in localStorage`)
+                // Create a minimal session object
+                session = {
+                  user: { id: parsed.user?.id },
+                  access_token: parsed.access_token
+                }
+              }
+            }
+          } catch (fallbackError) {
+            console.error(`🔐 [AuthProvider:${providerId}] localStorage fallback failed:`, fallbackError)
+          }
+        }
+
+        // Clear timeout if we got here successfully
+        clearTimeout(timeout)
+        setInitTimeout(null)
+
+        if (!isMounted) return
+
+        if (error && !session) {
+          console.error(`🔐 [AuthProvider:${providerId}] Session error:`, error)
           setState(prev => ({
             ...prev,
             loading: false,
             initialized: true,
-            error: null // Don't show error to user, just treat as logged out
+            error: null
           }))
           return
         }
 
-        console.log('🔐 [AuthProvider] Initial session:', {
+        console.log(`🔐 [AuthProvider:${providerId}] Initial session:`, {
           hasSession: !!session,
           userId: session?.user?.id,
-          expiresAt: session?.expires_at ? new Date(session.expires_at * 1000).toISOString() : 'N/A'
+          isNewTab: !state.initialized
         })
 
         if (session?.user) {
-          clearTimeout(initTimeout)
           await setUserAndProfile(session.user)
         } else {
-          // No session, set initialized state
-          clearTimeout(initTimeout)
           setState(prev => ({
             ...prev,
             loading: false,
@@ -417,13 +587,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       } catch (error) {
         console.error('🔐 [AuthProvider] Initialization error:', error)
-        clearTimeout(initTimeout)
         if (isMounted) {
+          // Clear any pending timeout
+          if (initTimeout) {
+            clearTimeout(initTimeout)
+            setInitTimeout(null)
+          }
+
           setState(prev => ({
             ...prev,
             loading: false,
             initialized: true,
-            error: null // Don't show error to user, just treat as logged out
+            error: error instanceof Error ? error.message : 'Authentication failed'
           }))
         }
       }
@@ -431,20 +606,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth()
 
-    // Listen for auth changes
+    // Simple auth state change listener - let Supabase handle multi-tab sync
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('🔐 [AuthProvider] Auth state change:', { 
-          event, 
-          hasSession: !!session, 
-          userId: session?.user?.id 
+        console.log(`🔐 [AuthProvider:${providerId}] Auth state change:`, {
+          event,
+          hasSession: !!session,
+          userId: session?.user?.id,
+          isMultiTabSync: event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT'
         })
 
-        if (!isMounted) {
-          console.log('🔐 [AuthProvider] Component unmounted, ignoring auth change')
+        if (!isMounted) return
+
+        // Skip INITIAL_SESSION events to avoid duplicate processing
+        if (event === 'INITIAL_SESSION') {
+          console.log('🔐 [AuthProvider] Skipping INITIAL_SESSION event to avoid duplicates')
           return
         }
 
+        // Simple: just update state based on session
         if (session?.user) {
           await setUserAndProfile(session.user)
         } else {
@@ -463,8 +643,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       isMounted = false
       subscription.unsubscribe()
+      // Clean up any pending timeout
+      if (initTimeout) {
+        clearTimeout(initTimeout)
+        setInitTimeout(null)
+      }
     }
-  }, [setUserAndProfile])
+  }, [setUserAndProfile, state.initialized])
 
   const contextValue: AuthContextType = {
     ...state,

@@ -4,7 +4,6 @@ import { useEffect, useState, useRef, useCallback, useMemo, memo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { LoadingState, ErrorState } from '@/components/LoadingState'
 import { useRouter } from 'next/navigation'
-// Remove this import - signOut is available from useAuth hook
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import ReactDatePicker from 'react-datepicker';
@@ -17,7 +16,7 @@ function Dashboard() {
   const router = useRouter()
 
 
-  const [loading, setLoading] = useState(false)
+  // Removed old loading state - now using consolidated dashboardState
   const [timeRange, setTimeRange] = useState('7d')
   const [showCheckinModal, setShowCheckinModal] = useState(false)
   const [selectedDept, setSelectedDept] = useState('All Departments')
@@ -25,7 +24,6 @@ function Dashboard() {
   const [scheduleDate, setScheduleDate] = useState<Date | null>(null)
   const [dateError, setDateError] = useState<string | null>(null)
   const [departments, setDepartments] = useState<{ name: string; count: number }[]>([])
-  const [departmentsLoading, setDepartmentsLoading] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | null }>({ message: '', type: null })
   const [recurrence, setRecurrence] = useState<'once' | 'weekly'>('once')
   const [dayOfWeek, setDayOfWeek] = useState<number>(1)
@@ -33,39 +31,11 @@ function Dashboard() {
     'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
   ]
 
-  // Enhanced Loading Components
-  const PulseLoader = ({ size = 'md', color = 'blue' }: { size?: 'sm' | 'md' | 'lg', color?: string }) => {
-    const sizeClasses = {
-      sm: 'h-4 w-4',
-      md: 'h-6 w-6',
-      lg: 'h-8 w-8'
-    }
-
-    return (
-      <div className="flex items-center justify-center">
-        <div className={`${sizeClasses[size]} relative`}>
-          <div className={`absolute inset-0 rounded-full bg-${color}-200 animate-ping`}></div>
-          <div className={`relative rounded-full ${sizeClasses[size]} bg-${color}-600 animate-pulse`}></div>
-        </div>
-      </div>
-    )
-  }
-
-  const SkeletonLoader = ({ className = '' }: { className?: string }) => (
-    <div className={`animate-pulse bg-gray-200 rounded ${className}`}></div>
-  )
-
-  const DotsLoader = ({ color = 'blue' }: { color?: string }) => (
-    <div className="flex items-center space-x-1">
-      <div className={`w-2 h-2 bg-${color}-600 rounded-full animate-bounce`} style={{ animationDelay: '0ms' }}></div>
-      <div className={`w-2 h-2 bg-${color}-600 rounded-full animate-bounce`} style={{ animationDelay: '150ms' }}></div>
-      <div className={`w-2 h-2 bg-${color}-600 rounded-full animate-bounce`} style={{ animationDelay: '300ms' }}></div>
-    </div>
-  )
+  // Removed complex loading components - keeping it simple like other pages
 
 
 
-  // Add new state for dashboard metrics
+  // Simple state management (matching other pages exactly)
   const [employeeStats, setEmployeeStats] = useState({
     total: 0,
     avgMood: 0,
@@ -73,37 +43,23 @@ function Dashboard() {
     totalLastMonth: 0,
     responseRateLastWeek: 0,
     moodCategory: 'Unknown'
-  });
-  const [employeeStatsLoading, setEmployeeStatsLoading] = useState(true);
-  const [employeeStatsError, setEmployeeStatsError] = useState<string | null>(null);
-
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [alertsLoading, setAlertsLoading] = useState(true);
-  const [alertsError, setAlertsError] = useState<string | null>(null);
-
-  const [recentResponses, setRecentResponses] = useState<any[]>([]);
-  const [recentResponsesLoading, setRecentResponsesLoading] = useState(true);
-  const [recentResponsesError, setRecentResponsesError] = useState<string | null>(null);
-
-  const [moodTrends, setMoodTrends] = useState<any[]>([]);
-  const [moodTrendsLoading, setMoodTrendsLoading] = useState(true);
-  const [moodTrendsError, setMoodTrendsError] = useState<string | null>(null);
-
+  })
+  const [alerts, setAlerts] = useState<any[]>([])
+  const [recentResponses, setRecentResponses] = useState<any[]>([])
+  const [moodTrends, setMoodTrends] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [hasHydrated, setHasHydrated] = useState(false)
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
-  const [lastOrgId, setLastOrgId] = useState<string | null>(null)
 
   // ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   useEffect(() => { setHasHydrated(true) }, [])
 
 
 
-  // Fetch employee stats (total, avg mood, response rate)
-  const fetchEmployeeStats = useCallback(async (orgId: string) => {
-    if (!orgId) return;
-    setEmployeeStatsLoading(true);
-    setEmployeeStatsError(null);
+  // Simple fetch employee stats (matching other pages pattern)
+  const fetchEmployeeStats = async (orgId: string) => {
     try {
       // Get current date ranges
       const now = new Date();
@@ -158,17 +114,12 @@ function Dashboard() {
         moodCategory
       });
     } catch (error: any) {
-      setEmployeeStatsError(error.message || 'Failed to fetch employee stats');
-    } finally {
-      setEmployeeStatsLoading(false);
+      throw new Error(error.message || 'Failed to fetch employee stats');
     }
-  }, []);
+  };
 
-  // Fetch alerts
-  const fetchAlerts = useCallback(async (orgId: string) => {
-    if (!orgId) return;
-    setAlertsLoading(true);
-    setAlertsError(null);
+  // Simple fetch alerts (matching other pages pattern)
+  const fetchAlerts = async (orgId: string) => {
     try {
       const { data, error } = await supabase
         .from('ai_insights')
@@ -180,17 +131,12 @@ function Dashboard() {
       if (error) throw error;
       setAlerts(data || []);
     } catch (error: any) {
-      setAlertsError(error.message || 'Failed to fetch alerts');
-    } finally {
-      setAlertsLoading(false);
+      throw new Error(error.message || 'Failed to fetch alerts');
     }
-  }, []);
+  };
 
-  // Fetch recent responses
-  const fetchRecentResponses = useCallback(async (orgId: string) => {
-    if (!orgId) return;
-    setRecentResponsesLoading(true);
-    setRecentResponsesError(null);
+  // Simple fetch recent responses (matching other pages pattern)
+  const fetchRecentResponses = async (orgId: string) => {
     try {
       const { data, error } = await supabase
         .from('mood_checkins')
@@ -206,17 +152,12 @@ function Dashboard() {
       if (error) throw error;
       setRecentResponses(data || []);
     } catch (error: any) {
-      setRecentResponsesError(error.message || 'Failed to fetch recent responses');
-    } finally {
-      setRecentResponsesLoading(false);
+      throw new Error(error.message || 'Failed to fetch recent responses');
     }
-  }, []);
+  };
 
-  // Fetch mood trends from actual mood check-ins
-  const fetchMoodTrends = useCallback(async (orgId: string) => {
-    if (!orgId) return;
-    setMoodTrendsLoading(true);
-    setMoodTrendsError(null);
+  // Simple fetch mood trends (matching other pages pattern)
+  const fetchMoodTrends = async (orgId: string) => {
     try {
       // Get mood check-ins for the organization with employee data
       const { data, error } = await supabase
@@ -233,15 +174,12 @@ function Dashboard() {
       if (error) throw error;
       setMoodTrends(data || []);
     } catch (error: any) {
-      setMoodTrendsError(error.message || 'Failed to fetch mood trends');
-    } finally {
-      setMoodTrendsLoading(false);
+      throw new Error(error.message || 'Failed to fetch mood trends');
     }
-  }, []);
+  };
 
-  // Helper to process moodTrends into chart data - memoized for performance
+  // Simple chart data processing (matching other pages pattern)
   const chartData = useMemo(() => {
-    if (moodTrendsLoading || moodTrendsError) return [];
     if (!moodTrends || moodTrends.length === 0) return [];
 
     const now = new Date();
@@ -318,48 +256,23 @@ function Dashboard() {
 
     // Filter out days with no data (mood = 0) and return only actual data
     return processedData.filter(item => item.mood > 0);
-  }, [moodTrends, moodTrendsLoading, moodTrendsError, timeRange, hasHydrated]);
+  }, [moodTrends, timeRange, hasHydrated]);
 
-  // Manual refresh function for when user navigates back to dashboard
-  const refreshDashboardData = useCallback(() => {
-    const orgId = profile?.organization?.id;
-    if (!orgId) return;
-
-    console.log('🔄 [DASHBOARD] Manual refresh triggered for org:', orgId);
-
-    // Force reset all states
-    setLoading(true);
-    setEmployeeStatsLoading(true);
-    setAlertsLoading(true);
-    setRecentResponsesLoading(true);
-    setMoodTrendsLoading(true);
-
-    // Clear errors
-    setEmployeeStatsError(null);
-    setAlertsError(null);
-    setRecentResponsesError(null);
-    setMoodTrendsError(null);
-
-    // Load data
-    Promise.allSettled([
-      fetchEmployeeStats(orgId),
-      fetchAlerts(orgId),
-      fetchRecentResponses(orgId),
-      fetchMoodTrends(orgId)
-    ]).then((results) => {
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          console.error(`Manual refresh fetch ${index} failed:`, result.reason);
-        }
-      });
-      console.log('✅ [DASHBOARD] Manual refresh completed');
-    }).catch((error) => {
-      console.error('Error in manual refresh:', error);
-    }).finally(() => {
-      setLoading(false);
-      console.log('🏁 [DASHBOARD] Manual refresh loading state set to false');
-    });
-  }, [profile?.organization?.id, fetchEmployeeStats, fetchAlerts, fetchRecentResponses, fetchMoodTrends]);
+  // Simple refresh function for the refresh button
+  const refreshDashboard = async () => {
+    if (!profile?.organization?.id) return
+    setLoading(true)
+    setError(null)
+    try {
+      await fetchEmployeeStats(profile.organization.id)
+      await fetchAlerts(profile.organization.id)
+      await fetchRecentResponses(profile.organization.id)
+      await fetchMoodTrends(profile.organization.id)
+    } catch (e: any) {
+      setError(e.message || 'Failed to load dashboard data')
+    }
+    setLoading(false)
+  }
 
   // Export organization data
   const handleExportReport = async () => {
@@ -401,103 +314,30 @@ function Dashboard() {
     }
   };
 
-  // Load dashboard data when profile is available - SINGLE useEffect
+  // Hydration effect (exactly like other pages)
+  useEffect(() => { setHasHydrated(true) }, [])
+
+  // Load dashboard data (exactly like settings page)
   useEffect(() => {
-    const orgId = profile?.organization?.id;
-    console.log('🔄 [DASHBOARD] useEffect triggered, orgId:', orgId, 'lastOrgId:', lastOrgId);
-
-    if (!orgId) {
-      console.log('🚨 [DASHBOARD] No organization ID available');
-      setLastOrgId(null);
-      setLoading(false); // Don't stay in loading state
-      return;
-    }
-
-    // Check if this is a fresh load or organization change
-    const isOrgChange = lastOrgId !== orgId;
-    console.log('🔄 [DASHBOARD] Organization change detected:', isOrgChange);
-
-    // Update the last org ID
-    setLastOrgId(orgId);
-
-    // Add timeout to prevent infinite loading
-    const loadingTimeout = setTimeout(() => {
-      console.warn('🚨 [DASHBOARD] Loading timeout - forcing completion');
-      setLoading(false);
-      setEmployeeStatsLoading(false);
-      setAlertsLoading(false);
-      setRecentResponsesLoading(false);
-      setMoodTrendsLoading(false);
-    }, 15000); // 15 second timeout
-
-    // Reset all loading states when starting fresh data load
-    console.log('🚀 [DASHBOARD] Starting fresh data load for org:', orgId);
-    setLoading(true);
-    setEmployeeStatsLoading(true);
-    setAlertsLoading(true);
-    setRecentResponsesLoading(true);
-    setMoodTrendsLoading(true);
-
-    // Clear any previous errors
-    setEmployeeStatsError(null);
-    setAlertsError(null);
-    setRecentResponsesError(null);
-    setMoodTrendsError(null);
-
-    // Load data directly in useEffect to avoid function recreation issues
-    Promise.allSettled([
-      fetchEmployeeStats(orgId),
-      fetchAlerts(orgId),
-      fetchRecentResponses(orgId),
-      fetchMoodTrends(orgId)
-    ]).then((results) => {
-      clearTimeout(loadingTimeout); // Clear timeout on successful completion
-      results.forEach((result, index) => {
-        if (result.status === 'rejected') {
-          console.error(`Dashboard data fetch ${index} failed:`, result.reason);
-        }
-      });
-      console.log('✅ [DASHBOARD] Data load completed');
-    }).catch((error) => {
-      clearTimeout(loadingTimeout); // Clear timeout on error
-      console.error('Error loading dashboard data:', error);
-    }).finally(() => {
-      setLoading(false);
-      console.log('🏁 [DASHBOARD] Loading state set to false');
-    });
-
-    // Cleanup function
-    return () => {
-      clearTimeout(loadingTimeout);
-    };
-  }, [profile?.organization?.id]); // Only depend on orgId
-
-  // Cleanup function to reset states when component unmounts
-  useEffect(() => {
-    return () => {
-      console.log('🧹 [DASHBOARD] Component unmounting, cleaning up states');
-      setLoading(false);
-      setEmployeeStatsLoading(false);
-      setAlertsLoading(false);
-      setRecentResponsesLoading(false);
-      setMoodTrendsLoading(false);
-    };
-  }, []);
-
-  // Listen for page visibility changes to refresh data when user comes back
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (!document.hidden && profile?.organization?.id) {
-        console.log('🔄 [DASHBOARD] Page became visible, refreshing data');
-        refreshDashboardData();
+    async function fetchDashboardData() {
+      if (!profile?.organization?.id) return
+      setLoading(true)
+      setError(null)
+      try {
+        // Sequential fetching (simple and reliable like other pages)
+        await fetchEmployeeStats(profile.organization.id)
+        await fetchAlerts(profile.organization.id)
+        await fetchRecentResponses(profile.organization.id)
+        await fetchMoodTrends(profile.organization.id)
+      } catch (e: any) {
+        setError(e.message || 'Failed to load dashboard data')
       }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [refreshDashboardData, profile?.organization?.id]);
+      setLoading(false)
+    }
+    if (profile?.organization?.id) {
+      fetchDashboardData()
+    }
+  }, [profile?.organization?.id])
 
   // Fetch real departments from database
   const fetchDepartmentsForCheckin = useCallback(async () => {
@@ -523,15 +363,12 @@ function Dashboard() {
       console.error('Failed to fetch departments:', error);
       // Fallback to "All Departments" only
       setDepartments([{ name: 'All Departments', count: 0 }]);
-    } finally {
-      setDepartmentsLoading(false);
     }
   }, [profile?.organization?.id]);
 
   // Fetch departments when modal opens
   useEffect(() => {
     if (showCheckinModal && profile?.organization?.id) {
-      setDepartmentsLoading(true);
       fetchDepartmentsForCheckin();
     }
   }, [showCheckinModal, profile?.organization?.id, fetchDepartmentsForCheckin]);
@@ -667,34 +504,14 @@ function Dashboard() {
     }
   };
 
-  // Profile is guaranteed to exist here due to auth guards above
+  // Simple auth check - user must have organization_id
+  if (!profile?.organization_id) {
+    return <LoadingState message="Loading organization data..." />
+  }
 
-  // Add a safety check - if loading for too long, show content anyway
-  const [forceShow, setForceShow] = useState(false);
-
-  useEffect(() => {
-    const forceShowTimer = setTimeout(() => {
-      if (loading) {
-        console.warn('🚨 [DASHBOARD] Forcing dashboard display after timeout');
-        setForceShow(true);
-        setLoading(false);
-      }
-    }, 8000); // Force show after 8 seconds
-
-    return () => clearTimeout(forceShowTimer);
-  }, [loading]);
-
-  // Show loading only if we haven't hydrated and haven't forced show
-  if (loading && !hasHydrated && !forceShow) {
-    console.log('🔄 [DASHBOARD] Main loading active, waiting for hydration...');
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
+  // Simple loading check (matching other pages exactly)
+  if (loading) {
+    return <LoadingState message="Loading dashboard data..." />
   }
 
   return (
@@ -714,7 +531,7 @@ function Dashboard() {
 
             <div className="flex items-center space-x-3">
               <button
-                onClick={refreshDashboardData}
+                onClick={refreshDashboard}
                 disabled={loading}
                 className="border border-gray-300 text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Refresh dashboard data"
@@ -775,6 +592,12 @@ function Dashboard() {
 
       {/* Dashboard Content */}
       <main className="p-6 lg:p-8 space-y-8">
+        {/* Simple error display (matching other pages) */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+            <div className="text-red-600">{error}</div>
+          </div>
+        )}
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
           <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 hover:shadow-xl hover:scale-105 transition-all duration-300 group">
@@ -782,19 +605,10 @@ function Dashboard() {
               <div className="flex-1">
                 <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Total Employees</p>
                 <div className="text-4xl font-bold text-gray-900 mb-2">
-                  {employeeStatsLoading ? (
-                    <div className="flex items-center">
-                      <SkeletonLoader className="h-8 w-16" />
-                    </div>
-                  ) : employeeStatsError ? (
-                    <span className="text-red-600">{employeeStatsError}</span>
-                  ) : (
-                    employeeStats.total
-                  )}
+                  {employeeStats.total}
                 </div>
                 <p className={`text-sm font-medium ${employeeStats.totalLastMonth > 0 ? 'text-green-600' : 'text-gray-500'}`}>
-                  {employeeStatsLoading ? '...' :
-                   employeeStats.totalLastMonth > 0 ? `+${employeeStats.totalLastMonth} this month` : 'No new employees this month'}
+                  {employeeStats.totalLastMonth > 0 ? `+${employeeStats.totalLastMonth} this month` : 'No new employees this month'}
                 </p>
               </div>
               <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
@@ -810,23 +624,13 @@ function Dashboard() {
               <div className="flex-1">
                 <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Response Rate</p>
                 <div className="text-4xl font-bold text-green-600 mb-2">
-                  {employeeStatsLoading ? (
-                    <div className="flex items-center">
-                      <SkeletonLoader className="h-8 w-20" />
-                    </div>
-                  ) : employeeStatsError ? (
-                    <span className="text-red-600">{employeeStatsError}</span>
-                  ) : (
-                    `${employeeStats.responseRate}%`
-                  )}
+                  {`${employeeStats.responseRate.toFixed(1)}%`}
                 </div>
                 <p className={`text-sm font-medium ${
-                  employeeStatsLoading ? 'text-gray-500' :
                   employeeStats.responseRate > employeeStats.responseRateLastWeek ? 'text-green-600' :
                   employeeStats.responseRate < employeeStats.responseRateLastWeek ? 'text-red-600' : 'text-gray-500'
                 }`}>
-                  {employeeStatsLoading ? '...' :
-                   employeeStats.responseRate === employeeStats.responseRateLastWeek ? 'No change from last week' :
+                  {employeeStats.responseRate === employeeStats.responseRateLastWeek ? 'No change from last week' :
                    `${employeeStats.responseRate > employeeStats.responseRateLastWeek ? '+' : ''}${(employeeStats.responseRate - employeeStats.responseRateLastWeek).toFixed(1)}% from last week`}
                 </p>
               </div>
@@ -843,23 +647,14 @@ function Dashboard() {
               <div className="flex-1">
                 <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Average Mood</p>
                 <div className="text-4xl font-bold text-blue-600 mb-2">
-                  {employeeStatsLoading ? (
-                    <div className="flex items-center">
-                      <SkeletonLoader className="h-8 w-12" />
-                    </div>
-                  ) : employeeStatsError ? (
-                    <span className="text-red-600">{employeeStatsError}</span>
-                  ) : (
-                    employeeStats.avgMood.toFixed(1)
-                  )}
+                  {employeeStats.avgMood.toFixed(1)}
                 </div>
                 <p className={`text-sm font-medium ${
-                  employeeStatsLoading ? 'text-gray-500' :
                   employeeStats.avgMood >= 4.5 ? 'text-green-600' :
                   employeeStats.avgMood >= 3.5 ? 'text-blue-600' :
                   employeeStats.avgMood >= 2.5 ? 'text-yellow-600' : 'text-red-600'
                 }`}>
-                  {employeeStatsLoading ? '...' : employeeStats.moodCategory}
+                  {employeeStats.moodCategory}
                 </p>
               </div>
               <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
@@ -875,22 +670,12 @@ function Dashboard() {
               <div className="flex-1">
                 <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Active Alerts</p>
                 <div className="text-4xl font-bold text-orange-600 mb-2">
-                  {alertsLoading ? (
-                    <div className="flex items-center">
-                      <SkeletonLoader className="h-8 w-8" />
-                    </div>
-                  ) : alertsError ? (
-                    <span className="text-red-600">{alertsError}</span>
-                  ) : (
-                    alerts.length
-                  )}
+                  {alerts.length}
                 </div>
                 <p className={`text-sm font-medium ${
-                  alertsLoading ? 'text-gray-500' :
                   alerts.length > 0 ? 'text-orange-600' : 'text-green-600'
                 }`}>
-                  {alertsLoading ? '...' :
-                   alerts.length > 0 ? 'Needs attention' : 'All good'}
+                  {alerts.length > 0 ? 'Needs attention' : 'All good'}
                 </p>
               </div>
               <div className="w-16 h-16 bg-gradient-to-br from-orange-100 to-orange-200 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
@@ -924,30 +709,7 @@ function Dashboard() {
               </select>
             </div>
             <div className="h-72 w-full">
-              {moodTrendsLoading ? (
-                <div className="flex flex-col items-center justify-center h-full space-y-4">
-                  <div className="relative">
-                    <PulseLoader size="lg" color="blue" />
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <DotsLoader color="blue" />
-                    <span className="text-gray-600 font-medium">Loading mood trends</span>
-                  </div>
-                  <div className="w-full max-w-xs">
-                    <div className="flex space-x-2">
-                      <SkeletonLoader className="h-16 w-8" />
-                      <SkeletonLoader className="h-20 w-8" />
-                      <SkeletonLoader className="h-12 w-8" />
-                      <SkeletonLoader className="h-24 w-8" />
-                      <SkeletonLoader className="h-16 w-8" />
-                      <SkeletonLoader className="h-18 w-8" />
-                      <SkeletonLoader className="h-14 w-8" />
-                    </div>
-                  </div>
-                </div>
-              ) : moodTrendsError ? (
-                <div className="flex items-center justify-center h-full text-red-600">{moodTrendsError}</div>
-              ) : chartData.length === 0 ? (
+              {chartData.length === 0 ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center text-gray-500">
                     <svg className="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -982,26 +744,7 @@ function Dashboard() {
             <h2 className="text-xl font-bold text-gray-900 mb-6">Recent Responses</h2>
 
             <div className="space-y-4">
-              {recentResponsesLoading ? (
-                <div className="space-y-4">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg animate-pulse">
-                      <SkeletonLoader className="h-10 w-10 rounded-full" />
-                      <div className="flex-1 space-y-2">
-                        <SkeletonLoader className="h-4 w-32" />
-                        <SkeletonLoader className="h-3 w-24" />
-                      </div>
-                      <SkeletonLoader className="h-8 w-16 rounded-full" />
-                    </div>
-                  ))}
-                  <div className="flex items-center justify-center py-4">
-                    <DotsLoader color="blue" />
-                    <span className="ml-3 text-gray-600">Loading responses</span>
-                  </div>
-                </div>
-              ) : recentResponsesError ? (
-                <div className="text-center text-red-600 py-8">{recentResponsesError}</div>
-              ) : recentResponses.length === 0 ? (
+              {recentResponses.length === 0 ? (
                 <div className="text-center text-gray-500 py-8">No recent responses yet.</div>
               ) : (
                 recentResponses.map((response, index) => {
@@ -1091,12 +834,7 @@ function Dashboard() {
               <h2 className="text-xl font-bold mb-4 text-gray-900">Send Check-in</h2>
               <div className="mb-4">
                 <label className="block text-gray-900 font-medium mb-2">Department</label>
-                {departmentsLoading ? (
-                  <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg">
-                    <DotsLoader color="blue" />
-                    <span className="text-blue-700 font-medium">Loading departments</span>
-                  </div>
-                ) : departments.length > 1 ? (
+                {departments.length > 1 ? (
                   <select
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                     value={selectedDept}
